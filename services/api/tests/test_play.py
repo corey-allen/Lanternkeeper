@@ -71,6 +71,7 @@ def test_vertical_slice_end_to_end(app_factory, settings_factory, fixture_pdf, m
 
         moved = act(client, cid, "I walk north to the drowned chapel")
         assert moved["state"]["location"]["name"] == "The Drowned Chapel"
+        assert "knee-deep" in moved["narration"] and "squat stone gatehouse" not in moved["narration"]
         assert moved["state"]["clock"]["lights"][0]["remaining_minutes"] == 49
         assert exit_named(moved["state"], "The Bell Loft") is None  # hidden until discovered
         assert any(e["type"] == "LOCATION_ENTERED" for e in moved["events"])
@@ -258,7 +259,7 @@ def test_combat_is_deterministic_and_consistent(lucky_client, fixture_pdf, manif
     act(client, cid, "I walk north to the drowned chapel")
     assert act(client, cid, "I search the chapel")["state"]["location"]["name"] == "The Drowned Chapel"
     out = act(client, cid, "I attack the wight")
-    attack = next(d for d in out["dice"] if d["purpose"] == "attack" and d["actor"] == "pc")
+    attack = next(d for d in out["dice"] if d["purpose"] == "attack" and d["actor"] == "Ash")
     damage = next(d for d in out["dice"] if d["purpose"] == "damage")
     assert attack["total"] == 16 and damage["total"] == 6
     diag = client.get(f"/api/v1/campaigns/{cid}/diagnostics").json()

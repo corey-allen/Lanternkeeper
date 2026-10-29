@@ -481,8 +481,9 @@ def start_encounter_tool(ctx: ToolContext) -> EncounterState:
     ev = ctx.event("ENCOUNTER_STARTED", "Combat began: " + ", ".join(c.name for c in outcome.encounter.combatants),
                    {"encounter_id": str(enc.id), "order": [c.name for c in outcome.encounter.combatants]},
                    witnessed=True)
+    names = {c.combatant_id: c.name for c in outcome.encounter.combatants}
     for rec in outcome.rolls:
-        ctx.record_roll(rec, ev)
+        ctx.record_roll(rec.model_copy(update={"actor": names.get(rec.actor, rec.actor)}), ev)
     ctx.outcome.append("Combat begins. Turn order: " + ", ".join(
         f"{c.name} ({c.initiative})" for c in outcome.encounter.combatants) + ".")
     return enc
@@ -497,9 +498,9 @@ def _attack(ctx: ToolContext, enc: EncounterState, model: Encounter, attacker_id
         "attacker": attacker.name, "target": target.name, "hit": out.hit, "attack_total": out.attack_roll.total,
         "target_ac": out.target_armor_class, "damage": out.damage, "target_hp_after": out.target_hp_after,
         "target_status": out.target_status.value}, witnessed=True)
-    ctx.record_roll(out.attack_roll, ev)
+    ctx.record_roll(out.attack_roll.model_copy(update={"actor": attacker.name}), ev)
     if out.damage_roll:
-        ctx.record_roll(out.damage_roll, ev)
+        ctx.record_roll(out.damage_roll.model_copy(update={"actor": attacker.name}), ev)
     ctx.outcome.append(f"{summary} (attack roll {out.attack_roll.total} vs AC {out.target_armor_class}).")
     if out.target_status != CombatantStatus.ACTIVE:
         ctx.outcome.append(f"{target.name} is {out.target_status.value}.")

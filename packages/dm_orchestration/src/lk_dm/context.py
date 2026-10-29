@@ -76,7 +76,7 @@ def build_intent_messages(options: SceneOptions, items: list[ContextItem], playe
 def build_narration_messages(outcome_lines: list[str], items: list[ContextItem], player_input: str) -> list[Message]:
     user = "\n".join([
         SECTION_OUTCOME,
-        "\n".join(f"- {sanitize_data(line, 500)}" for line in outcome_lines) or "- nothing happened",
+        "\n".join(f"- {sanitize_data(line, 500)}" for line in outcome_lines) or "(no state change)",
         SECTION_FACTS,
         _render_items(items),
         SECTION_INPUT,

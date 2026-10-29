@@ -56,7 +56,7 @@ def bootstrap_admin(db: Database, settings: Settings) -> None:
     with db.session() as s:
         if s.scalar(select(User.id).limit(1)):
             return
-        if settings.admin_password is None:
+        if settings.admin_password is None or not settings.admin_password.get_secret_value():
             log.warning("no users exist and LK_ADMIN_PASSWORD is unset; sign-in is impossible until it is set")
             return
         pw = settings.admin_password.get_secret_value()
@@ -116,9 +116,3 @@ def create_app(settings: Settings | None = None, *, provider: ModelProvider | No
         app.include_router(r, prefix="/api/v1")
 
     return app
-
-
-def __getattr__(name: str):  # lazily build the ASGI app so imports don't require configuration
-    if name == "app":
-        return create_app()
-    raise AttributeError(name)

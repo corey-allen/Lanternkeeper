@@ -1,0 +1,91 @@
+# Lanternkeeper self-hosted stack. Run from the repository root:
+#   cp .env.example .env   # then edit secrets
+#   docker compose -f infra/compose.yaml --env-file .env up -d --build
+# Only the web UI is published, and only on 127.0.0.1. PostgreSQL and the API are internal.
+name: lanternkeeper
+
+x-api-env: &api-env
+  LK_ENVIRONMENT: ${LK_ENVIRONMENT:-production}
+  LK_DATABASE_URL: postgresql+psycopg://lanternkeeper:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/lanternkeeper
+  LK_SECRET_KEY: ${LK_SECRET_KEY:?set LK_SECRET_KEY}
+  LK_ADMIN_USERNAME: ${LK_ADMIN_USERNAME:-keeper}
+  LK_ADMIN_PASSWORD: ${LK_ADMIN_PASSWORD:-}
+  LK_COOKIE_SECURE: ${LK_COOKIE_SECURE:-false}
+  LK_STORAGE_DIR: /data/storage
+  LK_MAX_UPLOAD_MB: ${LK_MAX_UPLOAD_MB:-50}
+  LK_MAX_PAGES: ${LK_MAX_PAGES:-400}
+  LK_OCR_ENGINE: ${LK_OCR_ENGINE:-tesseract}
+  LK_AI_PROVIDER: ${LK_AI_PROVIDER:-fake}
+  LK_AI_BASE_URL: ${LK_AI_BASE_URL:-}
+  LK_AI_API_KEY: ${LK_AI_API_KEY:-}
+  LK_AI_MODEL: ${LK_AI_MODEL:-local-model}
+  LK_AI_ALLOW_REMOTE: ${LK_AI_ALLOW_REMOTE:-false}
+  LK_LOG_LEVEL: ${LK_LOG_LEVEL:-INFO}
+
+services:
+  db:
+    image: postgres:16.4
+    environment:
+      POSTGRES_DB: lanternkeeper
+      POSTGRES_USER: lanternkeeper
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lanternkeeper -d lanternkeeper"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    build: { context: .., dockerfile: infra/docker/api.Dockerfile }
+    image: lanternkeeper-api:local
+    environment: *api-env
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    image: lanternkeeper-api:local
+    environment: *api-env
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health').status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  worker:
+    image: lanternkeeper-api:local
+    environment: *api-env
+    command: ["python", "-m", "lk_api.worker"]
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  web:
+    build: { context: ../apps/web, dockerfile: Dockerfile }
+    environment:
+      LK_API_INTERNAL_URL: http://api:8000
+    ports:
+      - "127.0.0.1:${LK_WEB_PORT:-3000}:3000"
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  storage:

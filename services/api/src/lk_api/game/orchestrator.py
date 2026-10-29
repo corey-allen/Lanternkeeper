@@ -72,6 +72,30 @@ class Snapshot:
     profile_key: str
 
 
+def scene_items(s, campaign, allowed: set[uuid.UUID]) -> list[ContextItem]:
+    """Player-safe context for the current scene: location, people, creatures, discoveries."""
+    loc = s.get(AdventureEntity, campaign.current_location_id)
+    loc_detail = s.get(Location, loc.id)
+
+    def cites(entity_id):
+        return tuple(h.ref() for h in retrieval.passages_for_entities(s, [entity_id], allowed))
+
+    items = [ContextItem(kind="location", claim_class=ClaimClass.VERIFIED_SOURCE, title=loc.name,
+                         text=loc_detail.description or loc.summary, entity_id=str(loc.id), citations=cites(loc.id))]
+    for inst, e in st.npcs_present(s, campaign):
+        d = s.get(NPCDefinition, e.id)
+        items.append(ContextItem(kind="npc", claim_class=ClaimClass.VERIFIED_SOURCE, title=e.name,
+                                 text=f"{d.description} Disposition: {inst.disposition.value}.",
+                                 entity_id=str(e.id), citations=cites(e.id)))
+    for e, m in st.enemies_present(s, campaign):
+        items.append(ContextItem(kind="creature", claim_class=ClaimClass.VERIFIED_SOURCE, title=e.name,
+                                 text=m.description, entity_id=str(e.id), citations=cites(e.id)))
+    for d in st.player_view(s, campaign)["discoveries"]:
+        items.append(ContextItem(kind="discovery", claim_class=ClaimClass.CAMPAIGN_FACT, title=d["name"],
+                                 text=d["text"], entity_id=d["id"]))
+    return items
+
+
 def _snapshot(svc: Services, user: User, campaign_id: uuid.UUID, req: ActionRequest) -> Snapshot | dict:
     with svc.db.session() as s:
         campaign = st.load_campaign(s, user, campaign_id)
@@ -91,27 +115,9 @@ def _snapshot(svc: Services, user: User, campaign_id: uuid.UUID, req: ActionRequ
         discovered = st.discovered_ids(s, campaign.id)
         allowed = retrieval.allowed_passage_ids(s, campaign.adventure_id, discovered)
         loc = s.get(AdventureEntity, campaign.current_location_id)
-        loc_detail = s.get(Location, loc.id)
-        items: list[ContextItem] = []
-        loc_hits = retrieval.passages_for_entities(s, [loc.id], allowed)
-        items.append(ContextItem(kind="location", claim_class=ClaimClass.VERIFIED_SOURCE, title=loc.name,
-                                 text=loc_detail.description or loc.summary, entity_id=str(loc.id),
-                                 citations=tuple(h.ref() for h in loc_hits)))
+        items = scene_items(s, campaign, allowed)
         npcs = st.npcs_present(s, campaign)
-        for inst, e in npcs:
-            d = s.get(NPCDefinition, e.id)
-            items.append(ContextItem(kind="npc", claim_class=ClaimClass.VERIFIED_SOURCE, title=e.name,
-                                     text=f"{d.description} Disposition: {inst.disposition.value}.",
-                                     entity_id=str(e.id),
-                                     citations=tuple(h.ref() for h in retrieval.passages_for_entities(s, [e.id], allowed))))
         enemies = st.enemies_present(s, campaign)
-        for e, m in enemies:
-            items.append(ContextItem(kind="creature", claim_class=ClaimClass.VERIFIED_SOURCE, title=e.name,
-                                     text=m.description, entity_id=str(e.id),
-                                     citations=tuple(h.ref() for h in retrieval.passages_for_entities(s, [e.id], allowed))))
-        for d in st.player_view(s, campaign)["discoveries"]:
-            items.append(ContextItem(kind="discovery", claim_class=ClaimClass.CAMPAIGN_FACT, title=d["name"],
-                                     text=d["text"], entity_id=d["id"]))
         difficulties: tuple[str, ...] = ()
         try:
             table, _ = profile.get("check.difficulty", dict[str, int])
@@ -233,7 +239,10 @@ async def handle_action(svc: Services, user: User, campaign_id: uuid.UUID, req: 
                        "events": [st.event_dict(e) for e in ctx.events if e.visibility.value == "PLAYER_VISIBLE"],
                        "dice": [st.roll_dict(r) for r in ctx.rolls], "version": campaign.version,
                        "rule_refs": sorted(set(ctx.rule_refs)),
-                       "restricted": st.restricted_texts(s, campaign, st.discovered_ids(s, campaign.id))}
+                       "restricted": st.restricted_texts(s, campaign, st.discovered_ids(s, campaign.id)),
+                       # Narrate from the state AFTER the commit (e.g. the new room after a move).
+                       "scene": scene_items(s, campaign, retrieval.allowed_passage_ids(
+                           s, campaign.adventure_id, st.discovered_ids(s, campaign.id)))}
     except IntegrityError as exc:
         # A concurrent request with the same key committed first: return its result.
         log.info("idempotency race resolved", extra={"campaign_id": str(campaign_id)})
@@ -244,7 +253,7 @@ async def handle_action(svc: Services, user: User, campaign_id: uuid.UUID, req: 
 
     # ---- 6. narrate from committed outcome ----------------------------------
     claims = _claims(proposal, snap, answer_items, ctx_out)
-    facts = snap.items[:1] + answer_items + snap.items[1:]
+    facts = ctx_out["scene"][:1] + answer_items + ctx_out["scene"][1:]
     outcome_lines = ctx_out["outcome"] or ([ctx_out["error"]["message"]] if ctx_out["error"] else [])
     narration_source = "model"
     try:

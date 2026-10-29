@@ -1,0 +1,11 @@
+.git
+.venv
+.scratch
+**/__pycache__
+**/node_modules
+apps/web/.next
+data
+storage
+backups
+*.docx
+.env
