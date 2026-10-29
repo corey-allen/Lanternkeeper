@@ -38,6 +38,22 @@ Read the table of contents and the rules chapters. Produce `private/notes/subsys
 subsystem, its page range, the decisions it needs, and how it interacts with others. A public
 summary of the categories only (no values) goes into `docs/rules-coverage-matrix.md`.
 
+**Step A result (2026-10-29).** The owner supplied the *Player's Guide* and *Game Master's Guide to
+the Western Reaches*. These consolidate Cursed Scroll 1–6 and explicitly defer to the Shadowdark RPG
+core rules for everything they do not vary. The core rulebook is still needed for:
+stat generation, checks, advantage, the core classes, HP, gear slots, light, crawl rounds and
+danger, combat, critical hits, morale, death, resting, luck, spellcasting procedure, and advancement.
+
+Structural gaps found so far (shapes only, no values):
+- Monster definitions need movement, six stat modifiers, alignment, level, multiple and
+  alternative attacks with ranges, and named abilities (including spells with their own DC).
+- Items need cost, properties, and categories (weapons, armor, mounts, boats, siege, poisons).
+- A hex-crawl travel subsystem (travel modes, terrain costs, visibility, weather, rations) and
+  campaign-scale subsystems (renown, downtime, carousing, bastions, warbands).
+- Class definitions need per-level talent tables and spell traditions with mishap tables.
+- Setting content (regions, hex key, city districts, encounter tables) belongs in the adventure
+  graph, which then needs hexes or regions as location kinds.
+
 ### B. Private profile loading
 - Profiles loaded from `LK_RULES_PROFILE_DIR` (default `private/profiles` in dev, a mounted
   read-only volume in Compose), validated against `RULE_TYPES`, plus the built-in profiles.
