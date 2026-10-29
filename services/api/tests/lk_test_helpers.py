@@ -97,16 +97,20 @@ CHARACTER = {
 }
 
 
-def setup_campaign(client: TestClient, pdf: bytes, manifest: dict) -> dict:
-    adventure_id, document_id = ingest(client, pdf, manifest)
-    approve_all_sound(client, adventure_id)
-    c = client.post("/api/v1/campaigns", json={"name": "Saltmere run", "accept_house_rules": True,
+def start_campaign(client: TestClient, adventure_id: str, name: str = "Saltmere run") -> dict:
+    c = client.post("/api/v1/campaigns", json={"name": name, "accept_house_rules": True,
                                                "adventure_id": adventure_id}).json()
     r = client.post(f"/api/v1/campaigns/{c['id']}/character", json=CHARACTER)
     assert r.status_code == 201, r.text
     r = client.post(f"/api/v1/campaigns/{c['id']}/start", json={})
     assert r.status_code == 200, r.text
-    return {"campaign_id": c["id"], "adventure_id": adventure_id, "document_id": document_id, "state": r.json()}
+    return {"campaign_id": c["id"], "state": r.json()}
+
+
+def setup_campaign(client: TestClient, pdf: bytes, manifest: dict) -> dict:
+    adventure_id, document_id = ingest(client, pdf, manifest)
+    approve_all_sound(client, adventure_id)
+    return {**start_campaign(client, adventure_id), "adventure_id": adventure_id, "document_id": document_id}
 
 
 def act(client: TestClient, campaign_id: str, text: str, version: int | None = None,
