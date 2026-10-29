@@ -1,0 +1,40 @@
+[project]
+name = "lanternkeeper"
+version = "0.1.0"
+description = "Self-hosted, solo-player AI Dungeon Master (workspace root)."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "lanternkeeper-rules",
+    "lanternkeeper-dm",
+    "lanternkeeper-api",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pgserver>=0.1.4",  # embedded PostgreSQL for integration tests
+    "ruff>=0.7",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/rules_engine", "packages/dm_orchestration", "services/api"]
+
+[tool.uv.sources]
+lanternkeeper-rules = { workspace = true }
+lanternkeeper-dm = { workspace = true }
+lanternkeeper-api = { workspace = true }
+
+[tool.pytest.ini_options]
+testpaths = ["packages/rules_engine/tests", "packages/dm_orchestration/tests", "services/api/tests"]
+addopts = "-q --import-mode=importlib"
+markers = [
+    "postgres: needs PostgreSQL (embedded pgserver or LK_TEST_DATABASE_URL)",
+    "tesseract: needs a local Tesseract OCR installation",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
