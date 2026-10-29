@@ -81,4 +81,5 @@ the live documents.
 | 2026-10-29 | Ship no Shadowdark values; use an original house-rule profile for development (ADR-0004). | Project default, pending owner review |
 | 2026-10-29 | Remote AI disabled by default; fake provider default (ADR-0005). | Project default |
 | 2026-10-29 | The owner's supplied books are the Western Reaches guides, which consolidate Cursed Scroll 1–6. Q3 (Cursed Scroll processing) therefore applies to them as well as to the zines. | Noted by project |
+| 2026-10-29 | The owner's core rulebook carries a notice that prohibits resale and redistribution and permits copying for personal use only. Recorded as a constraint (K3, K4); whether a private rules profile derived from it falls within personal use is part of Q1. | Noted by project |
 | 2026-10-29 | Proceed with Shadowdark rules sourced from the owner's own copy, held only in gitignored `private/` and never committed; Q1 stays open and distribution stays blocked (plan 0002). | Owner |
