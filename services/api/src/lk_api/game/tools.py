@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from lk_rules import Ability, RulesProfile
 from lk_rules.character import ability_modifier
-from lk_rules.checks import CheckRequest, CheckResult, resolve_check
+from lk_rules.checks import CheckRequest, CheckResult, automatic_success, resolve_check, trained_auto_success
 from lk_rules.clock import ActiveLight as RulesLight
 from lk_rules.clock import ClockState, advance, light_source
 from lk_rules.combat import Combatant, CombatantStatus, Encounter, EncounterStatus, next_turn, resolve_attack, start_encounter
@@ -308,24 +308,45 @@ def move_to_location(ctx: ToolContext, target_id: str) -> None:
     enter_location(ctx, uuid.UUID(target_id))
 
 
-def request_ability_check(ctx: ToolContext, ability: str, difficulty: str, purpose: str) -> CheckResult:
+def request_ability_check(ctx: ToolContext, ability: str, difficulty: str, purpose: str, *,
+                          task_tag: str | None = None) -> CheckResult:
+    """Resolve a check with the character's modifiers. Trained tasks succeed without a roll when there
+    is no time pressure (ADR-0009 #3); combat counts as pressure."""
     require_can_act(ctx)
     try:
         ab = Ability(ability.upper())
     except ValueError as exc:
         raise ToolRejected("INVALID_ABILITY", f"Unknown ability {ability!r}") from exc
-    result = resolve_check(CheckRequest(ability=ab, difficulty=difficulty, purpose=purpose),
-                           score=st.scores(ctx.character).score(ab), actor=ctx.character.name,
-                           profile=ctx.profile, roller=ctx.roller)
+    request = CheckRequest(ability=ab, difficulty=difficulty, purpose=purpose, task_tag=task_tag)
+    under_pressure = st.active_encounter(ctx.session, ctx.campaign) is not None
+    trained = trained_auto_success(st.character_features(ctx.session, ctx.character), task_tag,
+                                   under_pressure=under_pressure)
+    task = f", {task_tag}" if task_tag else ""
+    if trained is not None:
+        result = automatic_success(request, trained, ctx.profile)
+        ctx.event("CHECK_RESOLVED", f"{ab.value} check ({difficulty}{task}) succeeded automatically ({trained.name})",
+                  {"ability": ab.value, "difficulty": difficulty, "task_tag": task_tag, "automatic": True,
+                   "success": True, "feature": trained.key, "purpose": purpose}, witnessed=True)
+        ctx.outcome.append(f"{ab.value} check ({difficulty}{task}): no roll needed - {trained.name} makes this "
+                           "routine without time pressure.")
+        ctx.rule_refs.extend(result.rule_refs)
+        return result
+    sc = st.scores(ctx.character)
+    result = resolve_check(request, score=sc.score(ab), actor=ctx.character.name, profile=ctx.profile,
+                           roller=ctx.roller, scores=sc.model_dump(), level=ctx.character.level,
+                           modifiers=st.character_modifiers(ctx.session, ctx.character))
     word = "succeeded" if result.success else "failed"
+    natural = {"max": " (natural 20)", "min": " (natural 1)"}.get(result.natural or "", "")
     ev = ctx.event("CHECK_RESOLVED",
-                   f"{ab.value} check ({difficulty}) {word}: rolled {result.roll.total} vs {result.target}",
-                   {"ability": ab.value, "difficulty": difficulty, "target": result.target,
-                    "total": result.roll.total, "success": result.success, "purpose": purpose,
+                   f"{ab.value} check ({difficulty}{task}) {word}: rolled {result.roll.total} vs {result.target}{natural}",
+                   {"ability": ab.value, "difficulty": difficulty, "task_tag": task_tag, "target": result.target,
+                    "total": result.roll.total, "success": result.success, "natural": result.natural,
+                    "applied": [a.model_dump() for a in result.applied], "purpose": purpose,
                     "roll_id": result.roll.roll_id}, witnessed=True)
     ctx.record_roll(result.roll, ev)
-    ctx.outcome.append(f"{ab.value} check ({difficulty}, target {result.target}): rolled {result.roll.total} "
-                       f"- {word}.")
+    extras = f" [{', '.join(a.label for a in result.applied)}]" if result.applied else ""
+    ctx.outcome.append(f"{ab.value} check ({difficulty}{task}, target {result.target}): rolled {result.roll.total}"
+                       f"{natural}{extras} - {word}.")
     return result
 
 

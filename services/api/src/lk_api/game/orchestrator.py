@@ -27,6 +27,7 @@ from lk_dm.providers import ModelProvider, ProviderError, RetryPolicy, call_with
 from lk_dm.safety import guard_output
 from lk_dm.schemas import ClaimClass, ContextItem, IntentKind, IntentProposal, SceneOption, SceneOptions
 from lk_rules import Ability, RulesError, RulesProfile, UnsupportedMechanic
+from lk_rules.checks import task_tags
 from lk_rules.coverage import require_supported
 from lk_rules.dice import Roller
 
@@ -120,6 +121,10 @@ def _snapshot(svc: Services, user: User, campaign_id: uuid.UUID, req: ActionRequ
         enemies = st.enemies_present(s, campaign)
         difficulties: tuple[str, ...] = ()
         try:
+            tags = tuple(task_tags(profile))
+        except RulesError:
+            tags = ()
+        try:
             table, _ = profile.get("check.difficulty", dict[str, int])
             difficulties = tuple(table)
         except RulesError:
@@ -130,7 +135,7 @@ def _snapshot(svc: Services, user: User, campaign_id: uuid.UUID, req: ActionRequ
             npcs=tuple(SceneOption(id=str(e.id), name=e.name) for _, e in npcs),
             enemies=tuple(SceneOption(id=str(e.id), name=e.name) for e, _ in enemies),
             items=tuple(SceneOption(id=r.item_key, name=r.name) for r in st.inventory_rows(s, ch)),
-            abilities=tuple(a.value for a in Ability), difficulties=difficulties,
+            abilities=tuple(a.value for a in Ability), difficulties=difficulties, task_tags=tags,
             in_combat=st.active_encounter(s, campaign) is not None)
         return Snapshot(campaign.id, campaign.adventure_id, campaign.version, options, items, allowed,
                         st.restricted_texts(s, campaign, discovered), profile)
@@ -168,6 +173,8 @@ def _validate(proposal: IntentProposal, snap: Snapshot) -> tuple[str, str] | Non
             return "INVALID_ABILITY", "Unknown ability"
         if proposal.difficulty not in o.difficulties:
             return "INVALID_DIFFICULTY", "Difficulty must be one of the profile's labels"
+        if proposal.task_tag is not None and proposal.task_tag not in o.task_tags:
+            return "INVALID_TASK", "Task category must be one of the profile's categories"
     if o.in_combat and proposal.intent not in (IntentKind.ATTACK, IntentKind.ASK, IntentKind.UNSUPPORTED,
                                                IntentKind.CLARIFY):
         return "IN_COMBAT", "You are in combat. Only attacks are supported until it ends."
@@ -325,7 +332,8 @@ def _dispatch(ctx: tools.ToolContext, p: IntentProposal):
         case IntentKind.SEARCH:
             tools.search_location(ctx)
         case IntentKind.ABILITY_CHECK:
-            tools.request_ability_check(ctx, p.ability or "", p.difficulty or "", "player-declared action")
+            tools.request_ability_check(ctx, p.ability or "", p.difficulty or "", "player-declared action",
+                                        task_tag=p.task_tag)
             minutes, ref = ctx.profile.action_minutes("check")
             ctx.rule_refs.append(str(ref))
             tools.advance_game_time(ctx, minutes, "attempting an action")

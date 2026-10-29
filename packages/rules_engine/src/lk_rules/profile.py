@@ -26,6 +26,7 @@ from .definitions import (
     HitPointRule,
     LanguagesDef,
     NamedEntry,
+    NaturalResults,
     StatGeneration,
     TitleRow,
 )
@@ -105,6 +106,8 @@ RULE_TYPES: dict[str, Any] = {
     "ability.modifier_table": list[ModifierBand],
     "check.difficulty": dict[str, int],
     "check.advantage_enabled": bool,
+    "check.natural_results": NaturalResults,
+    "check.task_tags": list[NamedEntry],
     "stats.generation": StatGeneration,
     "character.ancestries": list[AncestryDef],
     "character.classes": list[ClassDef],

@@ -109,6 +109,10 @@ entries → private conformance tests → API tool and play-loop integration →
    `private/profiles/shadowdark-core.profile.json` (UNVERIFIED until reviewed with
    `scripts/review_profile.py`); private conformance tests in `private/conformance/`.
 2. Checks: difficulty, advantage and disadvantage, and any special-case rolls.
+   **Done (2026-10-29):** character modifiers in checks (scoped by stat and task category), advantage/
+   disadvantage cancelling across sources, natural results from the profile, task categories the model
+   must pick from (`check.task_tags`), trained-task automatic success outside combat (ADR-0009 #3).
+   Deferred: contested checks (with stealth, D6), luck tokens and approved rulings (own step).
 3. Gear and inventory: slot capacity rules, item catalogue structure, currency.
 4. Light and time: light duration semantics. If the book times light in real time, add a
    real-time clock mode alongside game time, with pause/resume semantics as an explicit decision.

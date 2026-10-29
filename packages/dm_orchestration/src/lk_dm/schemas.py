@@ -67,6 +67,7 @@ class SceneOptions(BaseModel):
     items: tuple[SceneOption, ...] = ()
     abilities: tuple[str, ...] = ()
     difficulties: tuple[str, ...] = ()
+    task_tags: tuple[str, ...] = ()  # task categories the profile defines for checks
     in_combat: bool = False
 
 
@@ -100,3 +101,4 @@ class IntentProposal(BaseModel):
     unsupported_mechanic: str | None = Field(default=None, max_length=64)
     clarification: str | None = Field(default=None, max_length=300)
     wait_minutes: int | None = Field(default=None, ge=1, le=600)
+    task_tag: str | None = Field(default=None, max_length=64)  # one of SCENE OPTIONS.task_tags

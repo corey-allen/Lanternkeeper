@@ -25,11 +25,31 @@ _UNSUPPORTED = [
     (r"\blevel ?up\b|\bexperience points?\b", "advancement.level"),
     (r"\b(persuade|convince|intimidate|bribe)\b", "social.persuade"),
 ]
+_TASK_HINTS = [
+    (r"\bclimb", ("climbing",)),
+    (r"\b(sneak|hide|creep)", ("sneaking_hiding", "sneaking")),
+    (r"\bdisguise", ("disguises",)),
+    (r"\b(trap|tripwire)", ("traps",)),
+    (r"\b(pick the lock|pickpocket|pick pockets|lockpick)", ("delicate_tasks",)),
+    (r"\b(force|kick open|bend|break free|slip free)", ("overcome_opposing_force", "forcing", "force")),
+    (r"\btrack", ("tracking",)),
+    (r"\b(notice|spot|listen)", ("noticing",)),
+]
+
+
+def _task_tag(text: str, allowed: tuple[str, ...]) -> str | None:
+    """Best-effort task category for the fake interpreter; only categories the profile defines."""
+    for pattern, tags in _TASK_HINTS:
+        if re.search(pattern, text):
+            return next((t for t in tags if t in allowed), None)
+    return None
+
+
 _CHECK_VERBS = {
-    "STR": r"\b(climb|force|lift|push|break|jump)\b",
-    "DEX": r"\b(sneak|balance|dodge|pick the lock|tumble)\b",
+    "STR": r"\b(climb|force|lift|push|break|jump|kick|bend)\b",
+    "DEX": r"\b(sneak|hide|balance|dodge|pick the lock|tumble|disarm)\b",
     "INT": r"\b(recall|decipher|study)\b",
-    "WIS": r"\b(listen|notice|sense)\b",
+    "WIS": r"\b(listen|notice|sense|track|spot)\b",
 }
 
 
@@ -66,7 +86,8 @@ def interpret(options: SceneOptions, player_input: str) -> IntentProposal:
         return IntentProposal(intent=IntentKind.SEARCH)
     for ability, pattern in _CHECK_VERBS.items():
         if re.search(pattern, text):
-            return IntentProposal(intent=IntentKind.ABILITY_CHECK, ability=ability, difficulty="normal")
+            return IntentProposal(intent=IntentKind.ABILITY_CHECK, ability=ability, difficulty="normal",
+                                  task_tag=_task_tag(text, options.task_tags))
     if "?" in text or re.match(r"\s*(what|who|where|why|how|describe|look|tell me)\b", text):
         return IntentProposal(intent=IntentKind.ASK, topic=player_input[:300])
     if re.search(r"\bwait\b", text):

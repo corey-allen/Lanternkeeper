@@ -1,6 +1,6 @@
 # Testing strategy
 
-Run everything: `uv run pytest` (140 tests: 139 pass, 1 skips without Tesseract, as of 2026-10-29; plus private conformance tests in `private/conformance/`, run only on the owner's machine).
+Run everything: `uv run pytest` (147 tests: 146 pass, 1 skips without Tesseract, as of 2026-10-29; plus private conformance tests in `private/conformance/`, run only on the owner's machine).
 
 Integration tests use **real PostgreSQL**: an embedded server from the `pgserver` dev dependency,
 or `LK_TEST_DATABASE_URL` (e.g. CI service container). Each test creates a fresh database by

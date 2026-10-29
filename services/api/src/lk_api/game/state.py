@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, object_session
 from lk_rules import RulesProfile
 from lk_rules.character import AbilityScores
 from lk_rules.inventory import Inventory, ItemStack
+from lk_rules.modifiers import Feature, Modifier, Scope
 
 from ..errors import ApiError, not_found
 from ..models import (
@@ -99,6 +100,23 @@ def require_character(session: Session, campaign: Campaign) -> Character:
 def scores(ch: Character) -> AbilityScores:
     return AbilityScores(STR=ch.str_score, DEX=ch.dex_score, CON=ch.con_score, INT=ch.int_score,
                          WIS=ch.wis_score, CHA=ch.cha_score)
+
+
+def character_modifiers(session: Session, ch: Character) -> list[Modifier]:
+    """Active typed modifiers (STAT_SCORE entries are already folded into scores and skipped)."""
+    out = []
+    for m in session.scalars(select(CharacterModifier).where(CharacterModifier.character_id == ch.id,
+                                                             CharacterModifier.folded.is_(False))):
+        out.append(Modifier(target=m.target, mode=m.mode, amount=m.amount, amount_from_stat=m.amount_from_stat,
+                            positive_only=m.positive_only, per_level_divisor=m.per_level_divisor,
+                            scope=Scope(**m.scope), source=m.source, label=m.label))
+    return out
+
+
+def character_features(session: Session, ch: Character) -> list[Feature]:
+    return [Feature(key=f.key, name=f.name, kind=f.kind, uses_per=f.uses_per, uses=f.uses_max,
+                    tags=tuple(f.tags), source=f.source)
+            for f in session.scalars(select(CharacterFeature).where(CharacterFeature.character_id == ch.id))]
 
 
 def inventory_rows(session: Session, ch: Character) -> list[CharacterInventory]:

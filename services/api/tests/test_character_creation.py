@@ -115,3 +115,48 @@ def test_manual_profile_draft_uses_entered_scores(client):
     client.put(f"{base}/draft/details", json={"name": "Ash"})
     state = client.post(f"{base}/draft/finalize").json()
     assert state["character"]["hp_max"] == 9
+
+
+def _synthetic_character(client, adventure_id):
+    cid = _campaign(client, adventure_id)
+    base = f"/api/v1/campaigns/{cid}/character"
+    client.post(f"{base}/draft")
+    client.put(f"{base}/draft/origin", json={"ancestry_key": "stonekin", "class_key": "warden"})
+    client.post(f"{base}/draft/roll")
+    client.put(f"{base}/draft/details", json={
+        "name": "Bryn", "alignment": "order", "trait_choices": {"stalwart": {"stat": "STR"}},
+        "talent_choices": {"0": {"weapon_type": "spear", "stat": "STR", "alternative": 1, "distribute": {"STR": 2}}}})
+    assert client.post(f"{base}/draft/finalize").status_code == 201
+    assert client.post(f"/api/v1/campaigns/{cid}/start", json={}).status_code == 200
+    return cid
+
+
+def test_checks_apply_character_features_and_modifiers(app_factory, tmp_path, fixture_pdf, manifest):
+    from lk_dm.providers import FakeProvider
+
+    client = _client(app_factory, tmp_path)
+    try:
+        adventure_id, _ = ingest(client, fixture_pdf, manifest)
+        approve_all_sound(client, adventure_id)
+        cid = _synthetic_character(client, adventure_id)
+
+        tracked = act(client, cid, "I try to track the footprints in the mud")
+        assert tracked["status"] == "COMMITTED" and tracked["dice"] == []
+        assert "no roll needed" in tracked["outcome"][0] and "Trailwise" in tracked["outcome"][0]
+
+        forced = act(client, cid, "I try to force the rusted gate open")
+        roll = forced["dice"][0]
+        assert roll["expression"] == "2d20kh1"  # Stalwart: advantage on STR checks to force things
+        assert "Stalwart" in forced["outcome"][0]
+
+        climbed = act(client, cid, "I try to climb the gatehouse wall")
+        assert climbed["dice"][0]["expression"] == "d20"  # no climbing modifiers
+
+        # A model may only use the profile's task categories.
+        provider = FakeProvider(script=[{"intent": "ability_check", "ability": "STR", "difficulty": "normal",
+                                         "task_tag": "juggling"}])
+        client.app.state.services.provider = provider
+        bad = act(client, cid, "I juggle")
+        assert bad["status"] == "REJECTED" and bad["error"]["code"] == "INVALID_TASK"
+    finally:
+        client.__exit__(None, None, None)

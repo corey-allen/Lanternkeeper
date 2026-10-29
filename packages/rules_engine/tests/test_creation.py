@@ -54,7 +54,10 @@ CLASSES = [
          {"key": "stalwart", "label": "Stalwart", "choices": [{"param": "stat", "allowed": ["STR", "DEX"]}],
           "modifiers": [{"target": "STAT_CHECK", "mode": "ADVANTAGE", "scope": {"stat": "$stat", "check_tag": "force"}}]},
          {"key": "unflinching", "label": "Unflinching", "features": [
-             {"key": "no_surprise", "name": "Cannot be surprised", "kind": "IMMUNITY_SURPRISE"}]}]},
+             {"key": "no_surprise", "name": "Cannot be surprised", "kind": "IMMUNITY_SURPRISE"}]},
+         {"key": "trailwise", "label": "Trailwise", "features": [
+             {"key": "trailwise", "name": "Trailwise", "kind": "TRAINED_TASKS", "tags": ["tracking"]}],
+          "modifiers": [{"target": "STAT_CHECK", "mode": "ADVANTAGE", "scope": {"check_tag": "tracking"}}]}]},
     {"key": "chanter", "name": "Chanter", "hit_die": "1d4", "requires_deity": True,
      "languages": {"choose_from": ["Skytongue", "Undertongue"], "choose_from_count": 1},
      "spellcasting": {"tradition": "chant", "stat": "WIS", "spells_known": {"1": [2]}}},
@@ -76,6 +79,9 @@ def synthetic_profile(**overrides) -> RulesProfile:
                                  "title": "Gatewatch"}]),
         "character.starting_gold": _v({"dice": "1d6", "multiplier": 3, "unit": "gp"}),
         "inventory.capacity": _v({"method": "stat_or_floor", "stat": "STR", "floor": 9}),
+        "check.task_tags": _v([{"key": "force", "name": "Forcing"}, {"key": "tracking", "name": "Tracking"},
+                               {"key": "climbing", "name": "Climbing"}]),
+        "check.natural_results": _v({"max_face": "auto_success", "min_face": "auto_failure"}),
     })
     entries.update(overrides)
     return DEV_HOUSE_RULES.model_copy(update={"key": "synthetic", "entries": entries})

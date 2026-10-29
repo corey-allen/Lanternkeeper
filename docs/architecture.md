@@ -82,6 +82,13 @@ Server-rolled draft (`/campaigns/{id}/character/draft`: begin, reroll-stats, sco
 details, finalize) built on `lk_rules.creation`; every roll is recorded; the response includes the
 profile's options and a live preview with all validation issues (ADR-0011).
 
+## Checks
+
+The model proposes an ability, a difficulty label and optionally a task category from the
+profile's list (`SceneOptions.task_tags`). The server applies the character's stored modifiers, resolves
+natural results from the profile, and grants automatic success only from a recorded trained-task feature
+when not in combat. Each applied modifier is named in the outcome and stored on the event.
+
 ## Provenance and grounding
 
 Source → `SourcePage` → `SourcePassage` (page number, bbox, method, injection flags) →

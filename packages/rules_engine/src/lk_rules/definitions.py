@@ -174,3 +174,11 @@ class CapacityRule(BaseModel):
     slots: int | None = Field(default=None, ge=1)
     stat: Ability | None = None
     floor: int | None = Field(default=None, ge=0)
+
+
+class NaturalResults(BaseModel):
+    """What a natural maximum or minimum on the d20 means for a check."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    max_face: Literal["auto_success", "none"]
+    min_face: Literal["auto_failure", "none"]

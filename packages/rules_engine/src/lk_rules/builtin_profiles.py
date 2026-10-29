@@ -44,6 +44,13 @@ DEV_HOUSE_RULES = RulesProfile(
         ),
         "check.difficulty": _house({"easy": 8, "normal": 11, "hard": 14, "extreme": 17}),
         "check.advantage_enabled": _house(True, "Advantage: roll 2d20 keep highest."),
+        "check.natural_results": _house({"max_face": "none", "min_face": "none"},
+                                        "Natural 20/1 have no special effect on checks."),
+        "check.task_tags": _house([{"key": "climbing", "name": "Climbing"},
+                                   {"key": "sneaking", "name": "Sneaking and hiding"},
+                                   {"key": "forcing", "name": "Forcing or breaking things"},
+                                   {"key": "noticing", "name": "Noticing things"}],
+                                  "Task categories the DM model may assign to a check."),
         "stats.generation": _house({"method": "manual"}, "Scores are entered within ability.score_range."),
         "character.classes": _house(
             [{"key": "wayfarer", "name": "Wayfarer", "hit_die": "1d8"}],

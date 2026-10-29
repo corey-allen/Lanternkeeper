@@ -25,6 +25,12 @@ No rule value in this repository is taken from Shadowdark. See `docs/licensing-r
 | `character.spells_known` | — | **no** (recorded as pending) | — | UNSUPPORTED | UNSUPPORTED | pending entry |
 | `check.ability` | `checks` | yes | difficulty table, modifier table | AVAILABLE | BLOCKED | success/failure, unknown label |
 | `check.advantage` | `checks`, `dice` | yes | advantage flag | AVAILABLE | BLOCKED | keep-high/keep-low |
+| `check.modifiers` | `checks` | yes | task tags | AVAILABLE | BLOCKED | scoped bonuses and advantage, breakdown, unknown tag rejected |
+| `check.natural_results` | `checks` | yes | natural results | AVAILABLE (no special effect) | BLOCKED | auto success/failure per profile |
+| `check.auto_success` | `checks` | yes | task tags | AVAILABLE | BLOCKED | trained tasks without pressure; combat counts as pressure (ADR-0009) |
+| `check.contested` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
+| `luck.tokens` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
+| `rulings.approval` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
 | `inventory.manage` | `inventory` | yes | items, capacity | AVAILABLE | BLOCKED | add/remove/consume, errors |
 | `time.advance` | `clock` | yes | action minutes | AVAILABLE | BLOCKED | advance, bounds |
 | `light.duration` | `clock` | yes | items (light duration) | AVAILABLE | BLOCKED | burn-down, expiry |
@@ -45,7 +51,7 @@ No rule value in this repository is taken from Shadowdark. See `docs/licensing-r
 | `encounter.random` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
 | `treasure.generate` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
 
-**Not yet applied in play:** checks and combat do not use character modifiers yet (plan 0002 steps D2/D5).
+**Applied in play:** checks use character modifiers, task categories, natural results and trained-task automatic success (D2). Combat does not use character modifiers yet (D5); total-darkness effects come with light (D4).
 
 ## Dev house-rule values (not Shadowdark)
 
