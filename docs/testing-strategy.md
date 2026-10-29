@@ -1,6 +1,6 @@
 # Testing strategy
 
-Run everything: `uv run pytest` (116 tests: 115 pass, 1 skips without Tesseract, as of 2026-10-29).
+Run everything: `uv run pytest` (125 tests: 124 pass, 1 skips without Tesseract, as of 2026-10-29).
 
 Integration tests use **real PostgreSQL**: an embedded server from the `pgserver` dev dependency,
 or `LK_TEST_DATABASE_URL` (e.g. CI service container). Each test creates a fresh database by

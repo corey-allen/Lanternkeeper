@@ -15,7 +15,7 @@ from .errors import (
     UnverifiedRule,
     ValidationFailed,
 )
-from .profile import Ability, RuleEntry, RulesProfile, RuleStatus
+from .profile import Ability, RuleEntry, RulesProfile, RuleStatus, validate_profile
 
 __all__ = [
     "BUILTIN_PROFILES",
@@ -34,4 +34,5 @@ __all__ = [
     "UnverifiedRule",
     "ValidationFailed",
     "get_profile",
+    "validate_profile",
 ]

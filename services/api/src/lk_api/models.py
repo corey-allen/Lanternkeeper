@@ -564,6 +564,20 @@ class RulesProfileRow(Base, TimestampMixin):
     system: Mapped[str] = mapped_column(String(32), nullable=False)
     requires_house_rule_acceptance: Mapped[bool] = mapped_column(Boolean, nullable=False)
     definition: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(String(64))  # current version
+    is_private: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
+class RulesProfileVersion(Base, TimestampMixin):
+    """Immutable copy of one profile version. Campaigns pin to a row here, never to a file."""
+
+    __tablename__ = "rules_profile_version"
+    __table_args__ = (UniqueConstraint("profile_id", "content_hash"),)
+    id: Mapped[uuid.UUID] = pk()
+    profile_id: Mapped[str] = mapped_column(ForeignKey("rules_profile.id", ondelete="CASCADE"), index=True)
+    version: Mapped[str] = mapped_column(String(32), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    definition: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False)
 
 
 class RuleReference(Base):
@@ -613,6 +627,8 @@ class Campaign(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     adventure_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("adventure.id", ondelete="RESTRICT"))
     rules_profile_id: Mapped[str] = mapped_column(ForeignKey("rules_profile.id"), nullable=False)
+    rules_profile_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("rules_profile_version.id", ondelete="RESTRICT"))
     house_rules_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[CampaignStatus] = mapped_column(enum(CampaignStatus, "campaign_status"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

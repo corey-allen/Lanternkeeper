@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     ai_timeout_seconds: float = 30.0
     ai_max_attempts: int = 2
 
+    rules_profile_dir: str | None = None  # owner's private *.profile.json files; never inside the repo's tracked tree
+
     dice_mode: Literal["secure", "seeded"] = "secure"
     dice_seed: int = 0
 

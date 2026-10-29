@@ -11,7 +11,6 @@ from fastapi import FastAPI, Request
 from sqlalchemy import select
 
 from lk_dm.providers import ModelProvider, RetryPolicy, build_provider
-from lk_rules import BUILTIN_PROFILES
 from lk_rules.coverage import coverage
 from lk_rules.dice import Roller, SecureRoller, SeededRoller
 
@@ -20,7 +19,8 @@ from .db import Database
 from .errors import install_error_handlers
 from .game.orchestrator import Services
 from .logging_setup import configure_logging
-from .models import RuleReference, RulesCoverageRecord, RulesProfileRow, User
+from .models import Campaign, RuleReference, RulesCoverageRecord, RulesProfileRow, RulesProfileVersion, User
+from .profiles import ProfileRegistry
 from .routes import campaigns, library, system
 from .security import LoginRateLimiter, hash_password
 from .storage import FileStorage
@@ -28,16 +28,25 @@ from .storage import FileStorage
 log = logging.getLogger("lk_api")
 
 
-def sync_rules_profiles(db: Database) -> None:
-    """Mirror built-in rules profiles into the database for auditing and coverage queries."""
+def sync_rules_profiles(db: Database, registry: ProfileRegistry) -> None:
+    """Mirror every profile into the database, store each new version immutably, and pin any
+    campaign that predates version pinning to the version it was using."""
     with db.session() as s:
-        for p in BUILTIN_PROFILES.values():
+        for p in registry.profiles.values():
+            digest = p.content_hash()
             row = s.get(RulesProfileRow, p.key) or RulesProfileRow(id=p.key)
             row.name, row.version, row.system = p.name, p.version, p.system
-            row.requires_house_rule_acceptance = p.requires_house_rule_acceptance
+            row.requires_house_rule_acceptance = p.needs_house_rule_acceptance
             row.definition = p.model_dump(mode="json")
+            row.content_hash = digest
+            row.is_private = registry.is_private(p.key)
             s.merge(row)
             s.flush()
+            if not s.scalar(select(RulesProfileVersion.id).where(RulesProfileVersion.profile_id == p.key,
+                                                                 RulesProfileVersion.content_hash == digest)):
+                s.add(RulesProfileVersion(profile_id=p.key, version=p.version, content_hash=digest,
+                                          definition=p.model_dump(mode="json")))
+                s.flush()
             for key, entry in p.entries.items():
                 ref = s.scalar(select(RuleReference).where(RuleReference.profile_id == p.key,
                                                            RuleReference.rule_key == key))
@@ -50,6 +59,14 @@ def sync_rules_profiles(db: Database) -> None:
                 rec = rec or RulesCoverageRecord(profile_id=p.key, mechanic_key=c.mechanic)
                 rec.status, rec.blocking_rules, rec.notes = c.status.value, list(c.blocking_rules), c.description
                 s.add(rec)
+        for campaign in s.scalars(select(Campaign).where(Campaign.rules_profile_version_id.is_(None))):
+            current = s.get(RulesProfileRow, campaign.rules_profile_id)
+            version_id = s.scalar(select(RulesProfileVersion.id).where(
+                RulesProfileVersion.profile_id == campaign.rules_profile_id,
+                RulesProfileVersion.content_hash == (current.content_hash if current else None)))
+            if version_id:
+                campaign.rules_profile_version_id = version_id
+                log.info("pinned legacy campaign to rules profile version", extra={"campaign_id": str(campaign.id)})
 
 
 def bootstrap_admin(db: Database, settings: Settings) -> None:
@@ -71,6 +88,7 @@ def create_app(settings: Settings | None = None, *, provider: ModelProvider | No
     settings = settings or get_settings()
     configure_logging(settings.log_level, include_document_text=settings.log_document_text)
     db = Database(settings.database_url)
+    registry = ProfileRegistry.from_dir(settings.rules_profile_dir)  # fails fast on invalid files
     if provider is None:
         provider = build_provider(
             settings.ai_provider, base_url=settings.ai_base_url,
@@ -83,7 +101,7 @@ def create_app(settings: Settings | None = None, *, provider: ModelProvider | No
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        sync_rules_profiles(db)
+        sync_rules_profiles(db, registry)
         bootstrap_admin(db, settings)
         log.info("api started", extra={"provider": provider.name, "provider_remote": provider.is_remote,
                                        "roller": roller.kind, "environment": settings.environment})
@@ -94,6 +112,7 @@ def create_app(settings: Settings | None = None, *, provider: ModelProvider | No
                   openapi_url="/api/openapi.json", lifespan=lifespan)
     app.state.settings = settings
     app.state.db = db
+    app.state.profiles = registry
     app.state.storage = FileStorage(settings.storage_dir)
     app.state.login_limiter = LoginRateLimiter()
     app.state.services = Services(db=db, provider=provider, roller=roller, model=settings.ai_model,

@@ -6,7 +6,6 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 
-from lk_rules import BUILTIN_PROFILES
 from lk_rules.coverage import coverage
 
 from ..errors import ApiError
@@ -78,11 +77,13 @@ def ai_disclosure(request: Request, user: User = CurrentUser) -> dict:
 
 
 @router.get("/rules/profiles")
-def rules_profiles(user: User = CurrentUser) -> list[dict]:
+def rules_profiles(request: Request, user: User = CurrentUser) -> list[dict]:
+    registry = request.app.state.profiles
     return [{
         "key": p.key, "name": p.name, "version": p.version, "system": p.system, "description": p.description,
-        "requires_house_rule_acceptance": p.requires_house_rule_acceptance,
+        "requires_house_rule_acceptance": p.needs_house_rule_acceptance,
+        "private": registry.is_private(p.key), "content_hash": p.content_hash(),
         "entries": {k: {"status": e.status.value, "source": e.source, "notes": e.notes,
                         "value": e.value if e.status.value != "UNVERIFIED" else None} for k, e in p.entries.items()},
         "coverage": [r.model_dump(mode="json") for r in coverage(p)],
-    } for p in BUILTIN_PROFILES.values()]
+    } for p in registry.profiles.values()]

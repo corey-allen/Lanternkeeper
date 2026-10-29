@@ -79,6 +79,8 @@ progression are relational columns.
 
 ## Rules
 
-`rules_profile` mirrors the built-in profiles (definition JSON for audit); `rule_reference` holds
+`rules_profile` mirrors every loaded profile, built-in or private (current definition, `content_hash`,
+`is_private`); `rules_profile_version` stores each distinct version immutably, and
+`campaign.rules_profile_version_id` pins a campaign to one of them (ADR-0010); `rule_reference` holds
 per-rule status and citation; `rules_coverage` the computed mechanic status; `house_rule` records,
 per campaign, which house-rule values the owner accepted and when.

@@ -70,7 +70,8 @@ provider: the model returns one typed proposal and the application chooses the t
 ## Rules engine boundary
 
 The API passes typed inputs (scores, inventory, combatants, clock) and receives typed results with
-`RollRecord`s and rule references. Every value comes from the campaign's `RulesProfile`. Missing
+`RollRecord`s and rule references. Every value comes from the campaign's pinned `RulesProfile` version (ADR-0010): built-in profiles, or
+the owner's private `*.profile.json` files loaded from `LK_RULES_PROFILE_DIR`. Missing
 or unverified rules raise `UnverifiedRule`; unimplemented mechanics raise `UnsupportedMechanic`.
 Production uses `SecureRoller` (`secrets.SystemRandom`); seeded rollers are refused outside
 `LK_ENVIRONMENT=test`.

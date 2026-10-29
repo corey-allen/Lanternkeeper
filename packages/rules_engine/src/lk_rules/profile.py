@@ -7,6 +7,10 @@ mechanic fails with :class:`UnverifiedRule` instead of guessing.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
+from datetime import date
 from enum import StrEnum
 from typing import Any, Literal, TypeVar
 
@@ -29,6 +33,7 @@ class RuleEntry(BaseModel):
     source: str = Field(min_length=1, description="Citation, or 'house rule: <who/when>'.")
     value: Any = None
     notes: str = ""
+    verified_on: date | None = None  # when the owner checked a VERIFIED value against the source
 
 
 class Ability(StrEnum):
@@ -160,6 +165,17 @@ class RulesProfile(BaseModel):
             source=entry.source,
         )
 
+    @property
+    def needs_house_rule_acceptance(self) -> bool:
+        """A campaign must explicitly accept any profile that contains house rules."""
+        return self.requires_house_rule_acceptance or any(
+            e.status == RuleStatus.HOUSE_RULE for e in self.entries.values())
+
+    def content_hash(self) -> str:
+        """Stable SHA-256 of everything that affects play. Campaigns pin to this."""
+        canonical = self.model_dump(mode="json")
+        return hashlib.sha256(json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
     def validate_entries(self) -> list[str]:
         """Check that every non-UNVERIFIED entry matches its declared type."""
         problems: list[str] = []
@@ -186,3 +202,27 @@ class RulesProfile(BaseModel):
         if action not in table:
             raise UnverifiedRule(f"time.action_minutes.{action}", self.key, "MISSING")
         return table[action], ref
+
+
+_PAGE_REF = re.compile(r"\bp(?:p|g)?\.?\s*\d+", re.IGNORECASE)
+_KEY = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
+
+
+def validate_profile(profile: RulesProfile) -> list[str]:
+    """Every problem that makes a profile unusable. Empty list means valid.
+
+    VERIFIED entries must cite a page and record when they were verified, so every
+    verified value can be traced back to the owner's source.
+    """
+    problems = list(profile.validate_entries())
+    if not _KEY.fullmatch(profile.key):
+        problems.append(f"profile key {profile.key!r} must be lowercase letters, digits and hyphens")
+    for key, entry in profile.entries.items():
+        if entry.status == RuleStatus.VERIFIED:
+            if not _PAGE_REF.search(entry.source):
+                problems.append(f"{key}: VERIFIED entries must cite a page (e.g. 'Core Rulebook p.19')")
+            if entry.verified_on is None:
+                problems.append(f"{key}: VERIFIED entries need verified_on")
+            if entry.value is None:
+                problems.append(f"{key}: VERIFIED entries need a value")
+    return problems

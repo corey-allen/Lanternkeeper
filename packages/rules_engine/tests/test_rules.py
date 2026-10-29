@@ -298,3 +298,46 @@ def test_rules_engine_has_no_framework_dependencies():
                 names = [node.module]
             for name in names:
                 assert name.split(".")[0] not in FORBIDDEN, f"{path.name} imports {name}"
+
+
+# ---- profile validation and pinning ------------------------------------------
+
+def _synthetic_verified():
+    from datetime import date
+
+    from lk_rules import RuleEntry, RuleStatus
+
+    entries = dict(P.entries)
+    entries["check.difficulty"] = RuleEntry(status=RuleStatus.VERIFIED, source="Synthetic Book p.7",
+                                            value={"normal": 13}, verified_on=date(2026, 10, 29))
+    return P.model_copy(update={"key": "synthetic-verified", "entries": entries})
+
+
+def test_validate_profile_requires_citations_for_verified():
+    from datetime import date
+
+    from lk_rules import RuleEntry, RuleStatus, validate_profile
+
+    assert validate_profile(P) == [] and validate_profile(SHADOWDARK_UNVERIFIED) == []
+    good = _synthetic_verified()
+    assert validate_profile(good) == []
+    bad_entries = dict(good.entries)
+    bad_entries["check.difficulty"] = RuleEntry(status=RuleStatus.VERIFIED, source="my memory", value={"normal": 13})
+    problems = validate_profile(good.model_copy(update={"entries": bad_entries, "key": "Bad Key"}))
+    assert any("cite a page" in p for p in problems) and any("verified_on" in p for p in problems)
+    assert any("profile key" in p for p in problems)
+    bad_entries["check.difficulty"] = RuleEntry(status=RuleStatus.VERIFIED, source="p.7", value="eleven",
+                                                verified_on=date(2026, 1, 1))
+    assert validate_profile(good.model_copy(update={"entries": bad_entries}))
+
+
+def test_content_hash_is_stable_and_sensitive():
+    a, b = _synthetic_verified(), _synthetic_verified()
+    assert a.content_hash() == b.content_hash() and len(a.content_hash()) == 64
+    assert a.content_hash() != P.content_hash()
+
+
+def test_house_rule_acceptance_needed_for_any_house_rule():
+    assert P.needs_house_rule_acceptance
+    assert not SHADOWDARK_UNVERIFIED.needs_house_rule_acceptance
+    assert _synthetic_verified().needs_house_rule_acceptance  # still has house-rule entries

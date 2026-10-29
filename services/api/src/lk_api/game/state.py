@@ -13,9 +13,9 @@ import uuid
 from typing import Any
 
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
-from lk_rules import RulesProfile, get_profile
+from lk_rules import RulesProfile
 from lk_rules.character import AbilityScores
 from lk_rules.inventory import Inventory, ItemStack
 
@@ -47,6 +47,7 @@ from ..models import (
     QuestDefinition,
     QuestState,
     QuestStatus,
+    RulesProfileVersion,
     SecretDefinition,
     User,
     Visibility,
@@ -64,8 +65,22 @@ def load_campaign(session: Session, user: User, campaign_id: uuid.UUID, *, lock:
     return campaign
 
 
+_PROFILE_CACHE: dict[uuid.UUID, RulesProfile] = {}
+
+
 def profile_for(campaign: Campaign) -> RulesProfile:
-    return get_profile(campaign.rules_profile_id)
+    """The exact rules profile version this campaign is pinned to (never the live file)."""
+    if campaign.rules_profile_version_id is None:
+        raise ApiError(409, "RULES_PROFILE_NOT_PINNED", "This campaign has no pinned rules profile version")
+    cached = _PROFILE_CACHE.get(campaign.rules_profile_version_id)
+    if cached is not None:
+        return cached
+    session = object_session(campaign)
+    assert session is not None, "campaign must be attached to a session"
+    version = session.get(RulesProfileVersion, campaign.rules_profile_version_id)
+    profile = RulesProfile.model_validate(version.definition)
+    _PROFILE_CACHE[campaign.rules_profile_version_id] = profile
+    return profile
 
 
 def character_of(session: Session, campaign: Campaign) -> Character | None:

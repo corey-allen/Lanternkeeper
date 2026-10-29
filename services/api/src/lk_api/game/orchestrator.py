@@ -26,7 +26,7 @@ from lk_dm.context import build_intent_messages, build_narration_messages
 from lk_dm.providers import ModelProvider, ProviderError, RetryPolicy, call_with_policy
 from lk_dm.safety import guard_output
 from lk_dm.schemas import ClaimClass, ContextItem, IntentKind, IntentProposal, SceneOption, SceneOptions
-from lk_rules import Ability, RulesError, UnsupportedMechanic, get_profile
+from lk_rules import Ability, RulesError, RulesProfile, UnsupportedMechanic
 from lk_rules.coverage import require_supported
 from lk_rules.dice import Roller
 
@@ -69,7 +69,7 @@ class Snapshot:
     items: list[ContextItem]
     allowed_passages: set[uuid.UUID]
     restricted: dict[str, str]
-    profile_key: str
+    profile: RulesProfile
 
 
 def scene_items(s, campaign, allowed: set[uuid.UUID]) -> list[ContextItem]:
@@ -133,7 +133,7 @@ def _snapshot(svc: Services, user: User, campaign_id: uuid.UUID, req: ActionRequ
             abilities=tuple(a.value for a in Ability), difficulties=difficulties,
             in_combat=st.active_encounter(s, campaign) is not None)
         return Snapshot(campaign.id, campaign.adventure_id, campaign.version, options, items, allowed,
-                        st.restricted_texts(s, campaign, discovered), campaign.rules_profile_id)
+                        st.restricted_texts(s, campaign, discovered), profile)
 
 
 def _record_failure(svc: Services, campaign_id: uuid.UUID, req: ActionRequest, code: str, message: str,
@@ -356,7 +356,7 @@ def _claims(p: IntentProposal, snap: Snapshot, answer_items: list[ContextItem], 
     for line in out["outcome"]:
         claims.append({"claim_class": ClaimClass.CAMPAIGN_FACT.value, "title": "Committed outcome", "text": line,
                        "citations": []})
-    profile = get_profile(snap.profile_key)
+    profile = snap.profile
     for ref in out["rule_refs"]:
         rule_key = ref.split(":", 1)[-1]
         entry = profile.entries.get(rule_key)

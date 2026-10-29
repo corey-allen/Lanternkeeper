@@ -84,6 +84,7 @@ Further structural gaps (shapes only, no values):
   graph, which then needs hexes or regions as location kinds.
 
 ### B. Private profile loading
+**Done (2026-10-29), see ADR-0010.** Campaigns pin to immutable versions; upgrades are explicit.
 - Profiles loaded from `LK_RULES_PROFILE_DIR` (default `private/profiles` in dev, a mounted
   read-only volume in Compose), validated against `RULE_TYPES`, plus the built-in profiles.
 - Each entry: `status: VERIFIED`, `source: "<book> p.<n>"`, owner's verification date.

@@ -21,6 +21,7 @@ x-api-env: &api-env
   LK_AI_MODEL: ${LK_AI_MODEL:-local-model}
   LK_AI_ALLOW_REMOTE: ${LK_AI_ALLOW_REMOTE:-false}
   LK_LOG_LEVEL: ${LK_LOG_LEVEL:-INFO}
+  LK_RULES_PROFILE_DIR: /data/profiles
 
 services:
   db:
@@ -52,6 +53,7 @@ services:
     environment: *api-env
     volumes:
       - storage:/data/storage
+      - ${LK_RULES_PROFILE_HOST_DIR:-../private/profiles}:/data/profiles:ro
     depends_on:
       migrate: { condition: service_completed_successfully }
     healthcheck:

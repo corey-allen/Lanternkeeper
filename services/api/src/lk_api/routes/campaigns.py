@@ -10,7 +10,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from lk_rules import RuleStatus, get_profile
+from lk_rules import RulesProfile, RuleStatus
 from lk_rules.character import CharacterSpec, validate_character
 from lk_rules.coverage import coverage
 
@@ -31,6 +31,8 @@ from ..models import (
     GameEvent,
     HouseRule,
     NPCInstance,
+    RulesProfileRow,
+    RulesProfileVersion,
     User,
     Visibility,
 )
@@ -59,30 +61,97 @@ class CampaignCreate(BaseModel):
     adventure_id: uuid.UUID | None = None
 
 
+def _current_version(s, profile: RulesProfile) -> RulesProfileVersion:
+    version = s.scalar(select(RulesProfileVersion).where(RulesProfileVersion.profile_id == profile.key,
+                                                         RulesProfileVersion.content_hash == profile.content_hash()))
+    if version is None:  # synced at startup; absence means the registry changed without a restart
+        raise ApiError(409, "RULES_PROFILE_NOT_SYNCED", "Restart the API to load this rules profile version")
+    return version
+
+
+def _record_house_rules(s, campaign: Campaign, profile: RulesProfile, user: User) -> None:
+    for key, entry in profile.entries.items():
+        if entry.status == RuleStatus.HOUSE_RULE:
+            s.add(HouseRule(campaign_id=campaign.id, profile_id=profile.key, rule_key=key, accepted_by=user.id,
+                            description=f"{entry.source}. {entry.notes}".strip()))
+
+
+def _require_house_rule_acceptance(profile: RulesProfile, accepted: bool) -> None:
+    if profile.needs_house_rule_acceptance and not accepted:
+        raise ApiError(422, "HOUSE_RULES_NOT_ACCEPTED",
+                       f"Profile '{profile.name}' contains house rules (not official rules). Review them under "
+                       "Rules and set accept_house_rules=true to use it.")
+
+
 @router.post("/campaigns", status_code=201)
 def create_campaign(body: CampaignCreate, request: Request, user: User = CurrentUser) -> dict:
     try:
-        profile = get_profile(body.rules_profile)
+        profile = request.app.state.profiles.get(body.rules_profile)
     except KeyError as exc:
         raise ApiError(422, "UNKNOWN_RULES_PROFILE", f"Unknown rules profile {body.rules_profile!r}") from exc
-    if profile.requires_house_rule_acceptance and not body.accept_house_rules:
-        raise ApiError(422, "HOUSE_RULES_NOT_ACCEPTED",
-                       f"Profile '{profile.name}' consists of house rules (not official rules). Review them under "
-                       "Rules and set accept_house_rules=true to use it.")
+    _require_house_rule_acceptance(profile, body.accept_house_rules)
     with request.app.state.db.session() as s:
         if body.adventure_id and not s.scalar(select(Adventure.id).where(Adventure.id == body.adventure_id,
                                                                           Adventure.owner_id == user.id)):
             raise not_found("Adventure")
         c = Campaign(owner_id=user.id, name=body.name.strip(), rules_profile_id=profile.key,
+                     rules_profile_version_id=_current_version(s, profile).id,
                      adventure_id=body.adventure_id, status=CampaignStatus.SETUP, version=0,
                      house_rules_accepted_at=datetime.now(UTC) if body.accept_house_rules else None)
         s.add(c)
         s.flush()
-        for key, entry in profile.entries.items():
-            if entry.status == RuleStatus.HOUSE_RULE:
-                s.add(HouseRule(campaign_id=c.id, profile_id=profile.key, rule_key=key, accepted_by=user.id,
-                                description=f"{entry.source}. {entry.notes}".strip()))
+        _record_house_rules(s, c, profile, user)
         return _summary(s, c)
+
+
+@router.get("/campaigns/{campaign_id}/rules-profile")
+def rules_profile_status(campaign_id: uuid.UUID, request: Request, user: User = CurrentUser) -> dict:
+    """Which profile version this campaign is pinned to, and whether a newer one is loaded."""
+    with request.app.state.db.session() as s:
+        c = st.load_campaign(s, user, campaign_id)
+        pinned = s.get(RulesProfileVersion, c.rules_profile_version_id) if c.rules_profile_version_id else None
+        row = s.get(RulesProfileRow, c.rules_profile_id)
+        return {"profile": c.rules_profile_id,
+                "pinned": None if pinned is None else {"version": pinned.version, "content_hash": pinned.content_hash},
+                "available": None if row is None else {"version": row.version, "content_hash": row.content_hash},
+                "update_available": bool(row and pinned and row.content_hash != pinned.content_hash)}
+
+
+class ProfileUpgrade(BaseModel):
+    accept_house_rules: bool = False
+
+
+@router.post("/campaigns/{campaign_id}/rules-profile/upgrade")
+def upgrade_rules_profile(campaign_id: uuid.UUID, body: ProfileUpgrade, request: Request,
+                          user: User = CurrentUser) -> dict:
+    """Explicitly move a campaign to the currently loaded version of its rules profile.
+
+    Values already derived (e.g. max HP, AC at creation) are not recomputed; the event records both
+    hashes so the change is auditable.
+    """
+    with request.app.state.db.session() as s:
+        c = st.load_campaign(s, user, campaign_id, lock=True)
+        try:
+            profile = request.app.state.profiles.get(c.rules_profile_id)
+        except KeyError as exc:
+            raise ApiError(409, "RULES_PROFILE_UNAVAILABLE", "The campaign's rules profile is no longer loaded") from exc
+        target = _current_version(s, profile)
+        if target.id == c.rules_profile_version_id:
+            raise ApiError(409, "RULES_PROFILE_CURRENT", "The campaign already uses the loaded version")
+        if st.active_encounter(s, c):
+            raise ApiError(409, "IN_COMBAT", "Finish the current combat before changing rules")
+        _require_house_rule_acceptance(profile, body.accept_house_rules)
+        previous = s.get(RulesProfileVersion, c.rules_profile_version_id) if c.rules_profile_version_id else None
+        c.rules_profile_version_id = target.id
+        _record_house_rules(s, c, profile, user)
+        ctx = tools.ToolContext(session=s, campaign=c, character=st.character_of(s, c), profile=profile,
+                                roller=request.app.state.services.roller, action_id=None)
+        ctx.event("RULES_PROFILE_UPGRADED", f"Rules profile updated to {profile.key}@{profile.version}",
+                  {"from_hash": previous.content_hash if previous else None, "to_hash": target.content_hash,
+                   "note": "Previously derived values were not recomputed."})
+        c.version += 1
+        return {"profile": profile.key, "version": target.version, "content_hash": target.content_hash,
+                "campaign_version": c.version}
 
 
 @router.get("/campaigns")

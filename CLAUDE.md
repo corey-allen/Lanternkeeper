@@ -29,6 +29,8 @@ Read `docs/architecture.md`, `docs/licensing-review.md`, and `docs/rules-coverag
   `cd services/api && LK_DATABASE_URL=... uv run alembic revision --autogenerate -m "..."`; review it
   and keep the game_event trigger intact.
 - Fixture: `uv run python scripts/generate_fixture.py`.
+- Private rules profile template: `uv run python scripts/profile_template.py <key> "<name>"` (writes to
+  `private/profiles/`; set `LK_RULES_PROFILE_DIR`). Never commit profiles: `scripts/check_private_content.py`.
 - Local stack: `uv run python scripts/dev_stack.py --env-file <env>`; web: `cd apps/web && pnpm dev`.
 - Web type-check/build: `pnpm typecheck`, `pnpm build` (`LK_WEB_STANDALONE=0` on Windows without symlinks).
 
