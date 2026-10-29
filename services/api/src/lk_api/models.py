@@ -660,6 +660,59 @@ class Character(Base, TimestampMixin):
     hp_max: Mapped[int] = mapped_column(Integer, nullable=False)
     armor_class: Mapped[int] = mapped_column(Integer, nullable=False)
     rule_refs: Mapped[list[str]] = mapped_column(JSONType, default=list, nullable=False)
+    ancestry_key: Mapped[str | None] = mapped_column(String(64))
+    alignment: Mapped[str | None] = mapped_column(String(32))
+    deity_key: Mapped[str | None] = mapped_column(String(64))
+    background_key: Mapped[str | None] = mapped_column(String(64))
+    title: Mapped[str | None] = mapped_column(String(64))
+    xp: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    gear_slots: Mapped[int | None] = mapped_column(Integer)
+    languages: Mapped[list[str]] = mapped_column(JSONType, default=list, server_default="[]", nullable=False)
+    base_scores: Mapped[dict[str, int] | None] = mapped_column(JSONType)  # before level-1 talent increases
+    gold_gp: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    pending: Mapped[list[str]] = mapped_column(JSONType, default=list, server_default="[]", nullable=False)
+
+
+class CharacterModifier(Base):
+    """A typed modifier the character carries, with its source. Mirrors ``lk_rules.modifiers.Modifier``."""
+
+    __tablename__ = "character_modifier"
+    id: Mapped[uuid.UUID] = pk()
+    character_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("character.id", ondelete="CASCADE"), index=True)
+    target: Mapped[str] = mapped_column(String(32), nullable=False)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_from_stat: Mapped[str | None] = mapped_column(String(8))
+    positive_only: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    per_level_divisor: Mapped[int | None] = mapped_column(Integer)
+    scope: Mapped[dict[str, str]] = mapped_column(JSONType, default=dict, nullable=False)
+    source: Mapped[str] = mapped_column(String(120), nullable=False)
+    label: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    folded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # STAT_SCORE already applied
+
+
+class CharacterFeature(Base):
+    __tablename__ = "character_feature"
+    __table_args__ = (CheckConstraint("uses_remaining IS NULL OR uses_remaining >= 0", name="ck_feature_uses"),)
+    id: Mapped[uuid.UUID] = pk()
+    character_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("character.id", ondelete="CASCADE"), index=True)
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    uses_per: Mapped[str | None] = mapped_column(String(8))
+    uses_max: Mapped[int | None] = mapped_column(Integer)
+    uses_remaining: Mapped[int | None] = mapped_column(Integer)
+    tags: Mapped[list[str]] = mapped_column(JSONType, default=list, nullable=False)
+    source: Mapped[str] = mapped_column(String(120), nullable=False)
+
+
+class CharacterDraft(Base, TimestampMixin):
+    """In-progress character creation. State is validated by ``lk_rules.creation.CreationDraft``."""
+
+    __tablename__ = "character_draft"
+    campaign_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("campaign.id", ondelete="CASCADE"), primary_key=True)
+    state: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class CharacterInventory(Base):

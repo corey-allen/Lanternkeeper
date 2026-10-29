@@ -44,10 +44,13 @@ DEV_HOUSE_RULES = RulesProfile(
         ),
         "check.difficulty": _house({"easy": 8, "normal": 11, "hard": 14, "extreme": 17}),
         "check.advantage_enabled": _house(True, "Advantage: roll 2d20 keep highest."),
+        "stats.generation": _house({"method": "manual"}, "Scores are entered within ability.score_range."),
         "character.classes": _house(
-            [{"key": "wayfarer", "name": "Wayfarer", "base_hit_points": 8}],
-            "Starting HP = base_hit_points + CON modifier, minimum 1.",
+            [{"key": "wayfarer", "name": "Wayfarer", "hit_die": "1d8"}],
+            "One generic class with no talents.",
         ),
+        "character.hit_points": _house({"level_1": "max_hit_die", "add_stat": "CON", "minimum": 1},
+                                       "Level-1 HP = maximum of the hit die + CON modifier, minimum 1."),
         "character.armor_class": _house({"base": 10, "add_ability": "DEX"}),
         "items.catalog": _house(
             [

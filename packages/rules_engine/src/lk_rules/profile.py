@@ -16,6 +16,19 @@ from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
+from .abilities import Ability
+from .definitions import (
+    AncestryDef,
+    CapacityRule,
+    ClassDef,
+    DeityDef,
+    DiceAmount,
+    HitPointRule,
+    LanguagesDef,
+    NamedEntry,
+    StatGeneration,
+    TitleRow,
+)
 from .errors import UnverifiedRule
 
 T = TypeVar("T")
@@ -36,15 +49,6 @@ class RuleEntry(BaseModel):
     verified_on: date | None = None  # when the owner checked a VERIFIED value against the source
 
 
-class Ability(StrEnum):
-    STR = "STR"
-    DEX = "DEX"
-    CON = "CON"
-    INT = "INT"
-    WIS = "WIS"
-    CHA = "CHA"
-
-
 # ---- typed rule values -------------------------------------------------------
 
 
@@ -57,12 +61,6 @@ class ModifierBand(BaseModel):
     min: int
     max: int
     modifier: int
-
-
-class ClassDef(BaseModel):
-    key: str
-    name: str
-    base_hit_points: int = Field(ge=1)
 
 
 class WeaponDef(BaseModel):
@@ -81,11 +79,6 @@ class ItemDef(BaseModel):
     weapon: WeaponDef | None = None
     light: LightDef | None = None
     consumable: bool = False
-
-
-class InventoryCapacity(BaseModel):
-    method: Literal["fixed_slots"]
-    slots: int = Field(ge=1)
 
 
 class ArmorClassRule(BaseModel):
@@ -112,10 +105,19 @@ RULE_TYPES: dict[str, Any] = {
     "ability.modifier_table": list[ModifierBand],
     "check.difficulty": dict[str, int],
     "check.advantage_enabled": bool,
+    "stats.generation": StatGeneration,
+    "character.ancestries": list[AncestryDef],
     "character.classes": list[ClassDef],
+    "character.hit_points": HitPointRule,
+    "character.languages": LanguagesDef,
+    "character.alignments": list[str],
+    "character.deities": list[DeityDef],
+    "character.backgrounds": list[NamedEntry],
+    "character.titles": list[TitleRow],
+    "character.starting_gold": DiceAmount,
     "character.armor_class": ArmorClassRule,
     "items.catalog": list[ItemDef],
-    "inventory.capacity": InventoryCapacity,
+    "inventory.capacity": CapacityRule,
     "time.action_minutes": dict[str, int],
     "combat.initiative": InitiativeRule,
     "combat.attack": AttackRule,
@@ -154,6 +156,15 @@ class RulesProfile(BaseModel):
             raise UnverifiedRule(rule_key, self.key, entry.status.value)
         value = TypeAdapter(type_).validate_python(entry.value)
         return value, self.ref(rule_key)
+
+    def optional(self, rule_key: str, type_: type[T] | Any) -> tuple[T | None, RuleRef | None]:
+        """Like ``get``, but a rule absent from the profile means "not part of this system".
+
+        An entry that is present but UNVERIFIED still raises: it is part of the system, just blocked.
+        """
+        if rule_key not in self.entries:
+            return None, None
+        return self.get(rule_key, type_)
 
     def ref(self, rule_key: str) -> RuleRef:
         entry = self.entries[rule_key]
@@ -226,3 +237,7 @@ def validate_profile(profile: RulesProfile) -> list[str]:
             if entry.value is None:
                 problems.append(f"{key}: VERIFIED entries need a value")
     return problems
+
+
+# Backwards-compatible name used by inventory code.
+InventoryCapacity = CapacityRule

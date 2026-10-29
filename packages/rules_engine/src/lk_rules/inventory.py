@@ -33,18 +33,33 @@ class Inventory(BaseModel):
         return sum(s.slots for s in self.stacks)
 
 
-def check_capacity(inventory: Inventory, profile: RulesProfile) -> RuleRef:
-    capacity, ref = profile.get("inventory.capacity", InventoryCapacity)
-    if inventory.slots_used > capacity.slots:
+def capacity_slots(profile: RulesProfile, *, scores: dict[str, int] | None = None,
+                   bonus_slots: int = 0) -> tuple[int, RuleRef]:
+    """Total gear slots: a fixed number, or a stat score with a floor, plus modifier bonuses."""
+    rule, ref = profile.get("inventory.capacity", InventoryCapacity)
+    if rule.method == "fixed_slots":
+        base = rule.slots or 0
+    else:
+        if scores is None or rule.stat is None:
+            raise InventoryError("Capacity depends on a stat score that was not provided")
+        base = max(scores[rule.stat.value], rule.floor or 0)
+    return base + bonus_slots, ref
+
+
+def check_capacity(inventory: Inventory, profile: RulesProfile, *, scores: dict[str, int] | None = None,
+                   bonus_slots: int = 0) -> RuleRef:
+    capacity, ref = capacity_slots(profile, scores=scores, bonus_slots=bonus_slots)
+    if inventory.slots_used > capacity:
         raise InventoryError(
-            f"Inventory needs {inventory.slots_used} slots but capacity is {capacity.slots}",
+            f"Inventory needs {inventory.slots_used} slots but capacity is {capacity}",
             slots_used=inventory.slots_used,
-            capacity=capacity.slots,
+            capacity=capacity,
         )
     return ref
 
 
-def add_item(inventory: Inventory, item_key: str, quantity: int, profile: RulesProfile) -> Inventory:
+def add_item(inventory: Inventory, item_key: str, quantity: int, profile: RulesProfile, *,
+             scores: dict[str, int] | None = None, bonus_slots: int = 0) -> Inventory:
     if quantity < 1:
         raise InventoryError("Quantity must be positive", quantity=quantity)
     item_def, _ = profile.item(item_key)
@@ -59,7 +74,7 @@ def add_item(inventory: Inventory, item_key: str, quantity: int, profile: RulesP
         stacks.append(ItemStack(item_key=item_key, name=item_def.name, quantity=quantity,
                                 slots_each=item_def.slots))
     result = Inventory(stacks=tuple(stacks))
-    check_capacity(result, profile)
+    check_capacity(result, profile, scores=scores, bonus_slots=bonus_slots)
     return result
 
 

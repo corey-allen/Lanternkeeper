@@ -104,6 +104,10 @@ For each: read pages → extend `RULE_TYPES` and the engine → synthetic unit t
 entries → private conformance tests → API tool and play-loop integration → coverage matrix update.
 
 1. Character creation: stat generation, modifiers, ancestries, classes, hit points, starting gear.
+   **Done for level 1 (2026-10-29, ADR-0011)** except spell selection (D7), gear purchase and
+   proficiencies (D3), applying modifiers in play (D2/D5), level-up (D8). The owner's values are in
+   `private/profiles/shadowdark-core.profile.json` (UNVERIFIED until reviewed with
+   `scripts/review_profile.py`); private conformance tests in `private/conformance/`.
 2. Checks: difficulty, advantage and disadvantage, and any special-case rolls.
 3. Gear and inventory: slot capacity rules, item catalogue structure, currency.
 4. Light and time: light duration semantics. If the book times light in real time, add a

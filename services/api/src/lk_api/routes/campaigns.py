@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from lk_rules import RulesProfile, RuleStatus
-from lk_rules.character import CharacterSpec, validate_character
 from lk_rules.coverage import coverage
 
 from ..errors import ApiError, not_found
@@ -25,8 +24,6 @@ from ..models import (
     Campaign,
     CampaignSnapshot,
     CampaignStatus,
-    Character,
-    CharacterInventory,
     EntityType,
     GameEvent,
     HouseRule,
@@ -194,35 +191,6 @@ def delete_campaign(campaign_id: uuid.UUID, request: Request, user: User = Curre
         tools.clear_campaign_events_guard(s)
         s.delete(c)
     return {"deleted": True}
-
-
-@router.post("/campaigns/{campaign_id}/character", status_code=201)
-def create_character(campaign_id: uuid.UUID, spec: CharacterSpec, request: Request, user: User = CurrentUser) -> dict:
-    with request.app.state.db.session() as s:
-        c = st.load_campaign(s, user, campaign_id, lock=True)
-        if c.status != CampaignStatus.SETUP:
-            raise ApiError(409, "CAMPAIGN_STARTED", "Characters are created before the campaign starts")
-        if st.character_of(s, c):
-            raise ApiError(409, "CHARACTER_EXISTS", "This solo campaign already has a character")
-        sheet = validate_character(spec, st.profile_for(c))  # RulesError -> 422 with every issue
-        ch = Character(campaign_id=c.id, name=sheet.name, class_key=sheet.class_key, level=sheet.level,
-                       str_score=spec.ability_scores.STR, dex_score=spec.ability_scores.DEX,
-                       con_score=spec.ability_scores.CON, int_score=spec.ability_scores.INT,
-                       wis_score=spec.ability_scores.WIS, cha_score=spec.ability_scores.CHA,
-                       hp_current=sheet.current_hp, hp_max=sheet.max_hp, armor_class=sheet.armor_class,
-                       rule_refs=list(sheet.rule_refs))
-        s.add(ch)
-        s.flush()
-        for stack in sheet.inventory.stacks:
-            s.add(CharacterInventory(character_id=ch.id, item_key=stack.item_key, name=stack.name,
-                                     quantity=stack.quantity, slots_each=stack.slots_each))
-        ctx = tools.ToolContext(session=s, campaign=c, character=ch, profile=st.profile_for(c),
-                                roller=request.app.state.services.roller, action_id=None)
-        ctx.event("CHARACTER_CREATED", f"{ch.name} the {sheet.class_name} joined the campaign",
-                  {"name": ch.name, "class_key": ch.class_key, "max_hp": ch.hp_max, "rule_refs": list(sheet.rule_refs)})
-        c.version += 1
-        s.flush()
-        return st.player_view(s, c)
 
 
 class StartRequest(BaseModel):

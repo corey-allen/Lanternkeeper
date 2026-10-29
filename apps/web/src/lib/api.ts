@@ -59,6 +59,12 @@ export type PlayerView = {
   character: null | {
     id: string; name: string; class_key: string; level: number; ability_scores: Record<string, number>;
     hp_current: number; hp_max: number; armor_class: number; rule_refs: string[];
+    ancestry_key: string | null; alignment: string | null; deity: string | null; background: string | null;
+    title: string | null; xp: number; gear_slots: number | null; languages: string[]; gold_gp: number;
+    pending: string[];
+    features: { key: string; name: string; kind: string; uses_per: string | null; uses_remaining: number | null }[];
+    modifiers: { target: string; mode: string; amount: number; from_stat: string | null; scope: Record<string, string>;
+      source: string; label: string; folded: boolean }[];
   };
   inventory: { item_key: string; name: string; quantity: number; slots_each: number }[];
   conditions: { key: string; expires_at_minute: number | null }[];

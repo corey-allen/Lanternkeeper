@@ -76,6 +76,12 @@ or unverified rules raise `UnverifiedRule`; unimplemented mechanics raise `Unsup
 Production uses `SecureRoller` (`secrets.SystemRandom`); seeded rollers are refused outside
 `LK_ENVIRONMENT=test`.
 
+## Character creation
+
+Server-rolled draft (`/campaigns/{id}/character/draft`: begin, reroll-stats, scores, origin, roll,
+details, finalize) built on `lk_rules.creation`; every roll is recorded; the response includes the
+profile's options and a live preview with all validation issues (ADR-0011).
+
 ## Provenance and grounding
 
 Source → `SourcePage` → `SourcePassage` (page number, bbox, method, injection flags) →

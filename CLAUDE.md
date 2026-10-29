@@ -31,6 +31,7 @@ Read `docs/architecture.md`, `docs/licensing-review.md`, and `docs/rules-coverag
 - Fixture: `uv run python scripts/generate_fixture.py`.
 - Private rules profile template: `uv run python scripts/profile_template.py <key> "<name>"` (writes to
   `private/profiles/`; set `LK_RULES_PROFILE_DIR`). Never commit profiles: `scripts/check_private_content.py`.
+  Review/verify entries: `uv run python scripts/review_profile.py list|show|verify <file> ...`.
 - Local stack: `uv run python scripts/dev_stack.py --env-file <env>`; web: `cd apps/web && pnpm dev`.
 - Web type-check/build: `pnpm typecheck`, `pnpm build` (`LK_WEB_STANDALONE=0` on Windows without symlinks).
 

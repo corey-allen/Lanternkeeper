@@ -1,20 +1,31 @@
-"""Ability modifiers and character validation."""
+"""Ability modifiers and one-shot character validation for profiles with manual stat entry.
+
+Profiles that roll stats, hit points or talents must use the server-rolled draft in
+``lk_rules.creation``; ``validate_character`` refuses them rather than letting a client supply
+values that should have been rolled.
+"""
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
-from .errors import UnverifiedRule, ValidationFailed
-from .inventory import Inventory, ItemStack, check_capacity
-from .profile import (
-    Ability,
-    ArmorClassRule,
-    ClassDef,
-    ModifierBand,
-    RuleRef,
-    RulesProfile,
-    ScoreRange,
+from .abilities import Ability
+from .creation import (
+    CharacterBuild,
+    CreationDraft,
+    _origin_resolved,
+    _roll_basis,
+    choose_origin,
+    finalize,
+    set_manual_scores,
 )
+from .definitions import ClassDef, HitPointRule, StatGeneration
+from .errors import UnverifiedRule, ValidationFailed
+from .dice import DiceExpression
+from .inventory import Inventory, ItemStack, capacity_slots, check_capacity
+from .profile import ModifierBand, RuleRef, RulesProfile
 
 
 class AbilityScores(BaseModel):
@@ -44,91 +55,81 @@ class StartingItem(BaseModel):
 
 
 class CharacterSpec(BaseModel):
-    """Player-supplied character input. Everything derived is computed, never accepted."""
+    """Player-supplied input for manual-entry profiles. Everything derived is computed, never accepted."""
 
     name: str = Field(min_length=1, max_length=80)
     class_key: str = Field(min_length=1, max_length=64)
+    ancestry_key: str | None = Field(default=None, max_length=64)
     ability_scores: AbilityScores
     starting_items: list[StartingItem] = Field(default_factory=list, max_length=50)
+    alignment: str | None = Field(default=None, max_length=32)
+    trait_choices: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    languages: list[str] = Field(default_factory=list, max_length=10)
 
 
 class CharacterSheet(BaseModel):
     model_config = ConfigDict(frozen=True)
-    name: str
-    class_key: str
-    class_name: str
-    level: int
-    ability_scores: AbilityScores
-    modifiers: dict[Ability, int]
-    max_hp: int
-    current_hp: int
-    armor_class: int
+    build: CharacterBuild
     inventory: Inventory
-    rule_refs: tuple[str, ...]
 
 
-def validate_character(spec: CharacterSpec, profile: RulesProfile) -> CharacterSheet:
-    """Validate a character against the profile, collecting every issue before failing."""
+def build_inventory(items: list[StartingItem], profile: RulesProfile, build: CharacterBuild) -> Inventory:
     issues: list[str] = []
-    refs: list[RuleRef] = []
-
-    score_range, ref = profile.get("ability.score_range", ScoreRange)
-    refs.append(ref)
-    for ability in Ability:
-        value = spec.ability_scores.score(ability)
-        if not score_range.min <= value <= score_range.max:
-            issues.append(
-                f"{ability.value} {value} outside allowed range {score_range.min}-{score_range.max}"
-            )
-
-    classes, ref = profile.get("character.classes", list[ClassDef])
-    refs.append(ref)
-    class_def = next((c for c in classes if c.key == spec.class_key), None)
-    if class_def is None:
-        issues.append(f"unknown class {spec.class_key!r}; allowed: {[c.key for c in classes]}")
-
-    items: list[ItemStack] = []
-    for wanted in spec.starting_items:
-        item_def, ref = profile.item(wanted.item_key)
+    stacks: list[ItemStack] = []
+    for wanted in items:
+        item_def, _ = profile.item(wanted.item_key)
         if item_def is None:
             issues.append(f"unknown item {wanted.item_key!r}")
             continue
-        items.append(
-            ItemStack(item_key=item_def.key, name=item_def.name, quantity=wanted.quantity,
-                      slots_each=item_def.slots)
-        )
-    if spec.starting_items:
-        refs.append(profile.ref("items.catalog"))
-
+        stacks.append(ItemStack(item_key=item_def.key, name=item_def.name, quantity=wanted.quantity,
+                                slots_each=item_def.slots))
     if issues:
         raise ValidationFailed(issues)
+    inventory = Inventory(stacks=tuple(stacks))
+    check_capacity(inventory, profile, scores=build.scores,
+                   bonus_slots=build.gear_slots - _base_capacity(profile, build))
+    return inventory
 
-    modifiers: dict[Ability, int] = {}
-    for ability in Ability:
-        modifiers[ability], ref = ability_modifier(spec.ability_scores.score(ability), profile)
-    refs.append(ref)
 
-    inventory = Inventory(stacks=tuple(items))
-    capacity_ref = check_capacity(inventory, profile)
-    refs.append(capacity_ref)
+def _base_capacity(profile: RulesProfile, build: CharacterBuild) -> int:
+    return capacity_slots(profile, scores=build.scores)[0]
 
-    assert class_def is not None
-    max_hp = max(1, class_def.base_hit_points + modifiers[Ability.CON])
 
-    ac_rule, ref = profile.get("character.armor_class", ArmorClassRule)
-    refs.append(ref)
-    armor_class = ac_rule.base + (modifiers[ac_rule.add_ability] if ac_rule.add_ability else 0)
+def validate_character(spec: CharacterSpec, profile: RulesProfile) -> CharacterSheet:
+    """Validate a manual-entry character, collecting every issue before failing."""
+    gen, _ = profile.optional("stats.generation", StatGeneration)
+    hp_rule, _ = profile.get("character.hit_points", HitPointRule)
+    classes, _ = profile.get("character.classes", list[ClassDef])
+    klass = next((c for c in classes if c.key == spec.class_key), None)
+    if (gen and gen.method != "manual") or hp_rule.level_1 != "max_hit_die" or (
+            klass and klass.talent_table and klass.talent_rolls_level_1):
+        raise ValidationFailed(["this rules profile rolls stats, hit points or talents; use the creation draft"])
+    issues: list[str] = []
+    draft = CreationDraft(stage="stats", stat_method="manual")
+    try:
+        draft = set_manual_scores(draft, spec.ability_scores.model_dump(), profile)
+    except ValidationFailed as exc:
+        issues.extend(exc.issues)
+        draft = draft.model_copy(update={"base_scores": spec.ability_scores.model_dump(), "stage": "origin"})
+    try:
+        draft = choose_origin(draft, profile, ancestry_key=spec.ancestry_key, class_key=spec.class_key)
+    except ValidationFailed as exc:
+        issues.extend(exc.issues)
+    for wanted in spec.starting_items:
+        if profile.item(wanted.item_key)[0] is None:
+            issues.append(f"unknown item {wanted.item_key!r}")
+    if issues:
+        raise ValidationFailed(issues)
+    assert klass is not None
+    draft = draft.model_copy(update={"stage": "rolled", "hp_roll_total": _hit_die_max(klass), "name": spec.name,
+                                     "alignment": spec.alignment, "trait_choices": spec.trait_choices,
+                                     "languages": spec.languages})
+    # Nothing is rolled on this path, so the roll basis is simply the current origin choices.
+    origin = [m for r in _origin_resolved(draft, profile, []) for m in r.modifiers]
+    draft = draft.model_copy(update={"roll_basis": _roll_basis(origin)})
+    build = finalize(draft, profile)
+    return CharacterSheet(build=build, inventory=build_inventory(spec.starting_items, profile, build))
 
-    return CharacterSheet(
-        name=spec.name.strip(),
-        class_key=class_def.key,
-        class_name=class_def.name,
-        level=1,
-        ability_scores=spec.ability_scores,
-        modifiers=modifiers,
-        max_hp=max_hp,
-        current_hp=max_hp,
-        armor_class=armor_class,
-        inventory=inventory,
-        rule_refs=tuple(dict.fromkeys(str(r) for r in refs)),
-    )
+
+def _hit_die_max(klass: ClassDef) -> int:
+    return DiceExpression.parse(klass.hit_die).terms[0].sides

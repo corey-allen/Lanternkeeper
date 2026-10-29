@@ -58,6 +58,10 @@ visibility, source order, approver). One typed detail table per type, keyed by `
 |-------|-------|
 | `campaign` | Owner, adventure (RESTRICT), rules profile, house-rule acceptance time, status, `version` (optimistic concurrency), current location. |
 | `character` | One per campaign. Scores (check 1–30), HP (check `0 ≤ current ≤ max`, `max ≥ 1`), AC, level, rule refs used at creation. |
+| `character` (creation fields) | Ancestry, alignment, deity, background, title, XP, gear slots, languages, base scores before level-1 increases, gold, pending (unsupported results). |
+| `character_modifier` | Typed modifiers with source, scope and folded flag (STAT_SCORE already applied to scores). |
+| `character_feature` | Non-numeric abilities (kind, uses per day/rest, tags). |
+| `character_draft` | In-progress creation, validated by `lk_rules.creation.CreationDraft`; one per campaign, consumed on finalize. |
 | `character_inventory` | Item key unique per character, quantity > 0, slots per item. |
 | `character_condition` | Tracked condition keys with optional expiry minute. |
 | `campaign_location_state` | Visited, first visit minute, searched. |

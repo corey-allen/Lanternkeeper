@@ -110,10 +110,11 @@ def test_validate_character_derives_stats():
                                       StartingItem(item_key="short_blade", quantity=1)]),
         P,
     )
-    assert sheet.name == "Ash" and sheet.max_hp == 9 and sheet.current_hp == 9  # 8 + CON(+1)
-    assert sheet.armor_class == 11  # 10 + DEX(+1)
+    b = sheet.build
+    assert b.name == "Ash" and b.max_hp == 9  # max d8 + CON(+1)
+    assert b.armor_class == 11  # 10 + DEX(+1)
     assert sheet.inventory.quantity_of("torch") == 2
-    assert any("ability.modifier_table" in r for r in sheet.rule_refs)
+    assert any("ability.modifier_table" in r for r in b.rule_refs)
 
 
 def test_validate_character_collects_all_issues():
@@ -134,8 +135,9 @@ def test_minimum_hp_is_one():
     frail = AbilityScores(STR=10, DEX=10, CON=3, INT=10, WIS=10, CHA=10)
     custom = P.model_copy(deep=True)
     custom.entries["character.classes"] = custom.entries["character.classes"].model_copy(
-        update={"value": [{"key": "w", "name": "W", "base_hit_points": 1}]})
-    assert validate_character(CharacterSpec(name="F", class_key="w", ability_scores=frail), custom).max_hp == 1
+        update={"value": [{"key": "w", "name": "W", "hit_die": "1d2"}]})
+    sheet = validate_character(CharacterSpec(name="F", class_key="w", ability_scores=frail), custom)
+    assert sheet.build.max_hp == 1
 
 
 # ---- checks -----------------------------------------------------------------

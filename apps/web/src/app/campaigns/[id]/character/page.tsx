@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, use, useState } from "react";
+import { DraftCreator } from "@/components/DraftCreator";
 import { Status, useLoad } from "@/components/useLoad";
 import { Adventure, PlayerView, api, errorText, patch, post } from "@/lib/api";
 
 const ABILITIES = ["STR", "DEX", "CON", "INT", "WIS", "CHA"] as const;
 
 type Profile = { key: string; entries: Record<string, { status: string; value: unknown }> };
-type ClassDef = { key: string; name: string; base_hit_points: number };
+type ClassDef = { key: string; name: string; hit_die: string };
 type ItemDef = { key: string; name: string; slots: number };
 
 export default function CharacterPage({ params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +27,9 @@ export default function CharacterPage({ params }: { params: Promise<{ id: string
   const usable = (k: string) => profile?.entries[k] && profile.entries[k].status !== "UNVERIFIED";
   const classes = (usable("character.classes") ? profile!.entries["character.classes"].value : []) as ClassDef[];
   const items = (usable("items.catalog") ? profile!.entries["items.catalog"].value : []) as ItemDef[];
+  const generation = (usable("stats.generation") ? profile!.entries["stats.generation"].value : null) as
+    | { method: string } | null;
+  const rolled = generation !== null && generation.method !== "manual";
   const range = (usable("ability.score_range") ? profile!.entries["ability.score_range"].value : null) as
     | { min: number; max: number } | null;
 
@@ -89,6 +93,30 @@ export default function CharacterPage({ params }: { params: Promise<{ id: string
                 <thead><tr>{ABILITIES.map((a) => <th key={a}>{a}</th>)}</tr></thead>
                 <tbody><tr>{ABILITIES.map((a) => <td key={a}>{v.character!.ability_scores[a]}</td>)}</tr></tbody>
               </table>
+              <p className="small">
+                {[v.character.ancestry_key, v.character.alignment, v.character.title, v.character.deity]
+                  .filter(Boolean).join(" · ")}
+                {v.character.gear_slots ? ` · ${v.character.gear_slots} gear slots` : ""}
+                {v.character.gold_gp ? ` · ${v.character.gold_gp} gp` : ""}
+              </p>
+              {v.character.languages.length > 0 && <p className="small">Languages: {v.character.languages.join(", ")}</p>}
+              {v.character.features.length > 0 && (
+                <><h3>Features</h3>
+                  <ul className="small">{v.character.features.map((f) => (
+                    <li key={f.key}>{f.name}{f.uses_per ? ` (${f.uses_remaining ?? "?"} per ${f.uses_per})` : ""}</li>))}</ul></>
+              )}
+              {v.character.modifiers.length > 0 && (
+                <><h3>Modifiers</h3>
+                  <ul className="small">{v.character.modifiers.map((m, i) => (
+                    <li key={i}><span className="mono">{m.target}</span> {m.mode === "BONUS"
+                      ? `${m.amount >= 0 ? "+" : ""}${m.amount}${m.from_stat ? ` + ${m.from_stat} mod` : ""}`
+                      : m.mode.toLowerCase()} {Object.keys(m.scope).length ? `(${Object.entries(m.scope).map(([k, x]) => `${k}: ${x}`).join(", ")})` : ""}
+                      <span className="muted"> from {m.source}{m.folded ? ", applied to score" : ""}</span></li>))}</ul></>
+              )}
+              {v.character.pending.length > 0 && (
+                <div className="notice small"><strong>Not yet supported (recorded for later):</strong>
+                  <ul>{v.character.pending.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
+              )}
               <h3>Inventory</h3>
               <ul>{v.inventory.map((i) => <li key={i.item_key}>{i.name} × {i.quantity}</li>)}</ul>
               <details>
@@ -96,6 +124,8 @@ export default function CharacterPage({ params }: { params: Promise<{ id: string
                 <ul className="small mono">{v.character.rule_refs.map((r) => <li key={r}>{r}</li>)}</ul>
               </details>
             </section>
+          ) : rolled ? (
+            <DraftCreator campaignId={id} onDone={view.reload} />
           ) : (
             <form className="card stack" onSubmit={create} aria-label="Create character">
               {!classes.length && <p className="error">This campaign&apos;s rules profile has no usable character rules. Character

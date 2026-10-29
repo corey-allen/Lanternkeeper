@@ -29,7 +29,9 @@ from ..models import (
     CampaignLocationState,
     Character,
     CharacterCondition,
+    CharacterFeature,
     CharacterInventory,
+    CharacterModifier,
     ClueDefinition,
     DefeatedCreature,
     DiceRoll,
@@ -219,6 +221,15 @@ def player_view(session: Session, campaign: Campaign) -> dict[str, Any]:
             "id": str(ch.id), "name": ch.name, "class_key": ch.class_key, "level": ch.level,
             "ability_scores": scores(ch).model_dump(), "hp_current": ch.hp_current, "hp_max": ch.hp_max,
             "armor_class": ch.armor_class, "rule_refs": ch.rule_refs,
+            "ancestry_key": ch.ancestry_key, "alignment": ch.alignment, "deity": ch.deity_key,
+            "background": ch.background_key, "title": ch.title, "xp": ch.xp, "gear_slots": ch.gear_slots,
+            "languages": ch.languages, "gold_gp": ch.gold_gp, "pending": ch.pending,
+            "features": [{"key": f.key, "name": f.name, "kind": f.kind, "uses_per": f.uses_per,
+                          "uses_remaining": f.uses_remaining}
+                         for f in session.scalars(select(CharacterFeature).where(CharacterFeature.character_id == ch.id))],
+            "modifiers": [{"target": m.target, "mode": m.mode, "amount": m.amount, "from_stat": m.amount_from_stat,
+                           "scope": m.scope, "source": m.source, "label": m.label, "folded": m.folded}
+                          for m in session.scalars(select(CharacterModifier).where(CharacterModifier.character_id == ch.id))],
         }
         view["inventory"] = [{"item_key": r.item_key, "name": r.name, "quantity": r.quantity,
                               "slots_each": r.slots_each} for r in inv]

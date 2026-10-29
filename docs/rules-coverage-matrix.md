@@ -20,7 +20,9 @@ No rule value in this repository is taken from Shadowdark. See `docs/licensing-r
 | Mechanic key | Engine module | Implemented | Needs rules | Dev profile | Shadowdark placeholder | Tests |
 |---|---|---|---|---|---|---|
 | `dice.roll` | `dice` | yes | — | AVAILABLE | AVAILABLE | parse/reject, audit record, seeded/secure rollers |
-| `character.validate` | `character` | yes | score range, modifier table, classes, AC, items, capacity | AVAILABLE | BLOCKED | derivation, every-issue reporting, capacity, min HP |
+| `character.create` | `creation`, `character` | yes | stat generation, modifier table, classes, hit points, AC, capacity (+ optional ancestries, languages, alignments, deities, backgrounds, titles, starting gold) | AVAILABLE | BLOCKED | rolled stats and reroll rule, origin lock, HP advantage, talent tables (alternatives, choose-a-row, distribution, unsupported), languages, deity, roll-basis tamper check |
+| `character.modifiers` | `modifiers` | yes | — | AVAILABLE | AVAILABLE | scopes, stat-derived and per-level amounts, advantage cancel |
+| `character.spells_known` | — | **no** (recorded as pending) | — | UNSUPPORTED | UNSUPPORTED | pending entry |
 | `check.ability` | `checks` | yes | difficulty table, modifier table | AVAILABLE | BLOCKED | success/failure, unknown label |
 | `check.advantage` | `checks`, `dice` | yes | advantage flag | AVAILABLE | BLOCKED | keep-high/keep-low |
 | `inventory.manage` | `inventory` | yes | items, capacity | AVAILABLE | BLOCKED | add/remove/consume, errors |
@@ -42,6 +44,8 @@ No rule value in this repository is taken from Shadowdark. See `docs/licensing-r
 | `social.persuade` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | typed error via play loop |
 | `encounter.random` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
 | `treasure.generate` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
+
+**Not yet applied in play:** checks and combat do not use character modifiers yet (plan 0002 steps D2/D5).
 
 ## Dev house-rule values (not Shadowdark)
 

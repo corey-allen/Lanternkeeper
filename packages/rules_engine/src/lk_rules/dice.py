@@ -177,33 +177,33 @@ def roll(
     )
 
 
-def roll_d20_with_mode(
+def roll_die_with_mode(
     roller: Roller,
     *,
+    sides: int,
     mode: Literal["normal", "advantage", "disadvantage"],
     modifier: int,
     purpose: str,
     actor: str,
     rule_refs: tuple[str, ...] = (),
 ) -> RollRecord:
-    """Roll one d20 or, for advantage/disadvantage, two d20 and keep one.
+    """Roll one die or, for advantage/disadvantage, two of the same die and keep one.
 
-    Whether advantage exists at all is decided by the caller from the rules
-    profile; this function only implements the keep-highest/keep-lowest arithmetic.
+    Whether advantage applies is decided by the caller; this only implements the arithmetic.
     """
-    first = roller.roll_die(20)
+    first = roller.roll_die(sides)
     if mode == "normal":
-        dice = (DieResult(sides=20, value=first),)
+        dice = (DieResult(sides=sides, value=first),)
         kept = first
     else:
-        second = roller.roll_die(20)
+        second = roller.roll_die(sides)
         keep_first = first >= second if mode == "advantage" else first <= second
         dice = (
-            DieResult(sides=20, value=first, kept=keep_first),
-            DieResult(sides=20, value=second, kept=not keep_first),
+            DieResult(sides=sides, value=first, kept=keep_first),
+            DieResult(sides=sides, value=second, kept=not keep_first),
         )
         kept = first if keep_first else second
-    expr = "d20" if mode == "normal" else ("2d20kh1" if mode == "advantage" else "2d20kl1")
+    expr = f"d{sides}" if mode == "normal" else (f"2d{sides}kh1" if mode == "advantage" else f"2d{sides}kl1")
     return RollRecord(
         expression=expr,
         purpose=purpose,
@@ -214,3 +214,16 @@ def roll_d20_with_mode(
         rule_refs=rule_refs,
         roller_kind=roller.kind,
     )
+
+
+def roll_d20_with_mode(
+    roller: Roller,
+    *,
+    mode: Literal["normal", "advantage", "disadvantage"],
+    modifier: int,
+    purpose: str,
+    actor: str,
+    rule_refs: tuple[str, ...] = (),
+) -> RollRecord:
+    return roll_die_with_mode(roller, sides=20, mode=mode, modifier=modifier, purpose=purpose, actor=actor,
+                              rule_refs=rule_refs)

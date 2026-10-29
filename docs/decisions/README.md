@@ -12,5 +12,6 @@
 | [0008](0008-python-312-uv-pnpm.md) | Python 3.12 via uv; pnpm; pinned patched Next/React | Accepted |
 | [0009](0009-solo-play-rulings.md) | Solo-play rulings: light timing, modes, auto-success, approved rulings, group rules, starting level | Accepted by owner |
 | [0010](0010-private-profiles-and-pinning.md) | Private profile files; campaigns pinned to immutable profile versions | Accepted |
+| [0011](0011-modifiers-and-creation-draft.md) | Typed modifiers; server-rolled character creation draft | Accepted |
 
 Template: Context, Decision, Consequences, Status. Supersede rather than edit accepted ADRs.
