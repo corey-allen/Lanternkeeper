@@ -1,0 +1,49 @@
+{
+  "title": "The Lantern Under Saltmere",
+  "license": "Original synthetic content created for the Lanternkeeper project; free to use in tests.",
+  "scanned_pages": [
+    3
+  ],
+  "ocr_text": {
+    "3": "AREA 3: The Bell Loft\n\nWind howls through the broken louvres. The great bronze bell hangs motionless, green with verdigris.\n\nExits: down to The Drowned Chapel"
+  },
+  "expected": {
+    "locations": [
+      "The Lantern Gate",
+      "The Drowned Chapel",
+      "The Bell Loft"
+    ],
+    "npcs": [
+      "Wren Halloway",
+      "Brother Osric"
+    ],
+    "duplicate_of": {
+      "Wren Haloway": "Wren Halloway"
+    },
+    "conflicts": [
+      [
+        "Wren Halloway",
+        "disposition"
+      ]
+    ],
+    "broken_references": [
+      "The Salt Cellar"
+    ],
+    "prompt_injection_pages": [
+      2
+    ],
+    "clues": [
+      "Ledger of Tolls",
+      "Tide-marked hymnal"
+    ],
+    "secrets": [
+      "The Abbess's Bargain"
+    ],
+    "monsters": [
+      "Brine Wight"
+    ],
+    "quests": [
+      "Silence the drowned bell"
+    ]
+  }
+}

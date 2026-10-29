@@ -16,7 +16,8 @@ class Message(BaseModel):
 
 class ClaimClass(StrEnum):
     VERIFIED_SOURCE = "VERIFIED_SOURCE"  # directly supported by an approved passage
-    VERIFIED_RULE = "VERIFIED_RULE"  # supported by the active rules profile
+    VERIFIED_RULE = "VERIFIED_RULE"  # rule verified against a cited source and cleared by licensing review
+    HOUSE_RULE = "HOUSE_RULE"  # rule value explicitly adopted by the user; not an official rule
     CAMPAIGN_FACT = "CAMPAIGN_FACT"  # established by a committed game event
     INFERENCE = "INFERENCE"
     IMPROVISATION = "IMPROVISATION"
