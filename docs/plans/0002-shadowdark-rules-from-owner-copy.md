@@ -1,0 +1,88 @@
+# Increment 2: Shadowdark rules from the owner's own rulebook
+
+Status: planned (2026-10-29). Owner decision: build the remaining mechanics against the real core
+rules, sourced from the owner's own copy, kept private and uncommitted. Licensing question Q1
+(may a private tool encode the rules?) remains open and is the owner's call; distribution stays
+blocked (docs/licensing-review.md).
+
+## Principles for this increment
+
+- **Read before modelling.** For each subsystem, read the relevant rulebook pages first, then
+  design the profile schema and mechanics. No schema is designed from memory.
+- **Values stay private.** Rule values live only in `private/profiles/*.profile.json`, each entry
+  with a page citation. The public repo holds the framework, schemas, and synthetic test values.
+- **Public tests use synthetic values.** Unit tests in the repo exercise mechanics with invented
+  numbers. Tests that check results against the rulebook's real values live in
+  `private/conformance/` and run only on the owner's machine.
+- **No rules text in the repo.** Docs name subsystems and schema shapes only. Quotes, paraphrases
+  and page notes go in `private/notes/`.
+- **Disclosure.** Reading pages in a Claude Code session sends their content to Anthropic. The owner
+  confirms this per document before Claude reads it.
+- `scripts/check_private_content.py` (also a pytest test) fails if anything under `private/`, any
+  non-fixture PDF, or any exported profile is tracked.
+
+## Private folder layout (gitignored)
+
+```
+private/rulebooks/     core rulebook PDF(s), owner's copy
+private/adventures/    one or more owned modules or zines, for extraction tuning
+private/profiles/      generated owner-verified profiles (*.profile.json)
+private/notes/         subsystem maps, page references, quotes
+private/conformance/   local-only conformance tests
+```
+
+## Steps
+
+### A. Subsystem map (reading only, no code)
+Read the table of contents and the rules chapters. Produce `private/notes/subsystem-map.md`: each
+subsystem, its page range, the decisions it needs, and how it interacts with others. A public
+summary of the categories only (no values) goes into `docs/rules-coverage-matrix.md`.
+
+### B. Private profile loading
+- Profiles loaded from `LK_RULES_PROFILE_DIR` (default `private/profiles` in dev, a mounted
+  read-only volume in Compose), validated against `RULE_TYPES`, plus the built-in profiles.
+- Each entry: `status: VERIFIED`, `source: "<book> p.<n>"`, owner's verification date.
+- Campaigns record the profile key, version, and a content hash, so a later profile edit is
+  detected rather than silently changing an ongoing campaign.
+- Unit tests with a synthetic private profile; nothing from the book.
+
+### C. Rulebook ingestion into rule candidates
+- `document_kind = RULEBOOK`; same upload, extraction, passage and OCR path.
+- New candidate types for rule values and tables, each citing evidence passages.
+- Review screen for rule candidates. Approval writes or updates the private profile file, and the
+  status becomes `VERIFIED` only on approval.
+- Typing a value in by hand is the fallback (same citation requirement).
+
+### D. Subsystems, in dependency order
+For each: read pages → extend `RULE_TYPES` and the engine → synthetic unit tests → private profile
+entries → private conformance tests → API tool and play-loop integration → coverage matrix update.
+
+1. Character creation: stat generation, modifiers, ancestries, classes, hit points, starting gear.
+2. Checks: difficulty, advantage and disadvantage, and any special-case rolls.
+3. Gear and inventory: slot capacity rules, item catalogue structure, currency.
+4. Light and time: light duration semantics. If the book times light in real time, add a
+   real-time clock mode alongside game time, with pause/resume semantics as an explicit decision.
+5. Combat: initiative, attacks, damage, critical results, morale, dying and death.
+6. Exploration: crawling rounds, danger level and encounter checks, resting and recovery.
+7. Spellcasting: casting checks, failure consequences, spell definitions (structure only in the
+   repo; spell content in the private profile).
+8. Advancement: XP, levelling, talents.
+
+Each subsystem is its own reviewable change. Where the book leaves something to the GM, the engine
+asks for an explicit house-rule decision instead of choosing.
+
+### E. Adventure extraction against a real layout
+- Owner supplies one module or zine in `private/adventures/`.
+- Study its layout and stat-block format. Build a matching heuristic parser and/or model-assisted
+  extraction with a local model (no remote transmission).
+- Add an original synthetic fixture that imitates the layout (structure only, invented content)
+  so the parser is covered by public tests.
+
+## Decisions needed from the owner
+
+| When | Decision |
+|------|----------|
+| Before step A | Confirm Claude may read `private/rulebooks/<file>` (content is sent to Anthropic). |
+| Step D4 | How real-time light should behave when the app is closed or the session is paused. |
+| Step D, per subsystem | Any table rule left to GM discretion: house rule, or ask each time. |
+| Step E | Which module to tune extraction on; whether a local model (e.g. Ollama) is available. |

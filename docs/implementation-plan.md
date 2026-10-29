@@ -48,7 +48,12 @@ from the `nodejs-wheel-binaries` package in a scratch environment.
 - Playwright spec written but not run. The web Docker image was not built here.
 - Synchronous DB work inside the async action endpoint (acceptable for one user).
 
-## Next smallest useful steps
+## Next increment
+
+Shadowdark rules from the owner's own rulebook, subsystem by subsystem, kept private:
+[`plans/0002-shadowdark-rules-from-owner-copy.md`](plans/0002-shadowdark-rules-from-owner-copy.md).
+
+## Other next steps
 
 1. Run `docker compose up` on a Docker host and the Playwright spec against it; fix anything found.
 2. Install Tesseract and run the `tesseract`-marked test; then enable `LK_OCR_ENGINE=tesseract` by default.

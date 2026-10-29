@@ -22,6 +22,10 @@ backups/
 *.sqlite
 *.db
 
+# Owner-supplied rulebooks, adventures, private rules profiles and notes. NEVER commit.
+# scripts/check_private_content.py fails if anything here is tracked.
+private/
+
 # Source documents. Only original synthetic fixtures under fixtures/ may be committed.
 *.pdf
 !fixtures/synthetic_adventures/*.pdf

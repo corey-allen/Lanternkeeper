@@ -80,3 +80,4 @@ the live documents.
 |------|----------|----|
 | 2026-10-29 | Ship no Shadowdark values; use an original house-rule profile for development (ADR-0004). | Project default, pending owner review |
 | 2026-10-29 | Remote AI disabled by default; fake provider default (ADR-0005). | Project default |
+| 2026-10-29 | Proceed with Shadowdark rules sourced from the owner's own copy, held only in gitignored `private/` and never committed; Q1 stays open and distribution stays blocked (plan 0002). | Owner |
