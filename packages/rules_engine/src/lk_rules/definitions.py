@@ -182,3 +182,87 @@ class NaturalResults(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     max_face: Literal["auto_success", "none"]
     min_face: Literal["auto_failure", "none"]
+
+
+# ---- gear ----------------------------------------------------------------------------
+
+Range = Literal["close", "near", "far"]
+WeaponProperty = Literal["finesse", "loading", "thrown", "two_handed", "versatile"]
+
+
+class Cost(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    amount: int = Field(ge=0)
+    unit: str  # a currency denomination key
+
+
+class WeaponDef(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    kind: Literal["melee", "ranged", "both"] = "melee"
+    ranges: tuple[Range, ...] = ("close",)
+    damage: str
+    damage_two_handed: str | None = None  # versatile weapons
+    properties: tuple[WeaponProperty, ...] = ()
+    attack_ability: Ability | None = None  # explicit override; otherwise combat.attack_stats decides
+
+
+class ArmorDef(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    kind: Literal["body", "shield"]
+    base_ac: int | None = None  # body armor: replaces the unarmored base
+    add_dex: bool = False
+    ac_bonus: int = 0  # shields
+    stealth: Literal["normal", "disadvantage"] = "normal"
+    swim: Literal["normal", "disadvantage", "none"] = "normal"
+    occupies_hand: bool = False
+
+
+class LightDef(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    duration_minutes: int = Field(ge=1)
+    radius: Literal["close", "near", "double_near"] | None = None
+
+
+class KitItem(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    item_key: str
+    quantity: int = Field(ge=1)
+
+
+class ItemDef(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    key: str
+    name: str
+    category: Literal["gear", "weapon", "armor", "shield", "ammunition", "light", "kit", "container"] = "gear"
+    cost: Cost | None = None
+    slots: int = Field(default=1, ge=0)  # gear slots per full "slot unit"
+    quantity_per_slot: int = Field(default=1, ge=1)  # how many fit in one slot unit
+    free_quantity: int = Field(default=0, ge=0)  # carried without slots (e.g. the first backpack)
+    weapon: WeaponDef | None = None
+    armor: ArmorDef | None = None
+    light: LightDef | None = None
+    consumable: bool = False
+    contents: tuple[KitItem, ...] = ()  # kits expand into their contents when acquired
+
+
+class Denomination(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    key: str
+    name: str
+    value: int = Field(ge=1)  # in the smallest denomination
+
+
+class CurrencyDef(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    denominations: tuple[Denomination, ...]
+    coins_per_slot: int = Field(ge=1)
+    free_coins: int = Field(default=0, ge=0)
+
+
+class AttackStatsRule(BaseModel):
+    """Which stat an attack uses. Finesse and thrown weapons may use either listed stat."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    melee: Ability
+    ranged: Ability
+    either: tuple[Ability, ...] = ()  # for finesse/thrown: the wielder uses the better of these

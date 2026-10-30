@@ -23,6 +23,8 @@ from lk_rules.clock import ActiveLight as RulesLight
 from lk_rules.clock import ClockState, advance, light_source
 from lk_rules.combat import Combatant, CombatantStatus, Encounter, EncounterStatus, next_turn, resolve_attack, start_encounter
 from lk_rules.dice import RollRecord, Roller
+from lk_rules import gear
+from lk_rules.definitions import ClassDef
 from lk_rules.inventory import remove_item
 from lk_rules.profile import InitiativeRule
 from lk_rules.progression import QuestStatus as RQuest
@@ -435,11 +437,33 @@ def use_item(ctx: ToolContext, item_key: str) -> None:
 
 
 def _weapon(ctx: ToolContext):
-    for r in st.inventory_rows(ctx.session, ctx.character):
+    """The wielded weapon; if none is wielded, draw the first usable carried weapon (recorded)."""
+    rows = st.inventory_rows(ctx.session, ctx.character)
+    inv = st.inventory_model(rows)
+    wielded = gear.equipped(inv, "main_hand") or gear.equipped(inv, "both_hands")
+    if wielded:
+        return ctx.profile.item(wielded.item_key)[0], wielded.equipped_as
+    klass = _class_def(ctx)
+    for r in rows:
         item_def, _ = ctx.profile.item(r.item_key)
-        if item_def and item_def.weapon:
-            return item_def
-    return None
+        if item_def and item_def.weapon and gear.proficient(item_def, klass):
+            hands = "both_hands" if "two_handed" in item_def.weapon.properties else "main_hand"
+            st.save_inventory(ctx.session, ctx.character, gear.equip(inv, item_def.key, ctx.profile, klass, hands=hands))
+            ctx.outcome.append(f"You draw your {item_def.name.lower()}.")
+            return item_def, hands
+    return None, None
+
+
+def _class_def(ctx: ToolContext):
+    classes, _ = ctx.profile.get("character.classes", list[ClassDef])
+    return next((c for c in classes if c.key == ctx.character.class_key), None)
+
+
+def refresh_armor_class(ctx: ToolContext) -> None:
+    ac, _ = gear.armor_class(st.inventory_model(st.inventory_rows(ctx.session, ctx.character)), ctx.profile,
+                             stat_mods=st.stat_mods_of(ctx.character, ctx.profile),
+                             modifiers=st.character_modifiers(ctx.session, ctx.character), level=ctx.character.level)
+    ctx.character.armor_class = ac
 
 
 def _cid(p: EncounterParticipant) -> str:
@@ -470,17 +494,19 @@ def start_encounter_tool(ctx: ToolContext) -> EncounterState:
     enemies = st.enemies_present(ctx.session, ctx.campaign)
     if not enemies:
         raise ToolRejected("NO_ENEMIES", "There is nothing here to fight.")
-    weapon = _weapon(ctx)
+    weapon, hands = _weapon(ctx)
     if weapon is None:
-        raise ToolRejected("NO_WEAPON", "You have no weapon; unarmed attacks are not defined by the active "
-                           "rules profile.")
+        raise ToolRejected("NO_WEAPON", "You have no weapon you can use; unarmed attacks are not defined by "
+                           "the active rules profile.")
+    wp = gear.weapon_profile(weapon, profile=ctx.profile, stat_mods=st.stat_mods_of(ctx.character, ctx.profile),
+                             hands=hands)
     init_rule, init_ref = ctx.profile.get("combat.initiative", InitiativeRule)
     scores = st.scores(ctx.character)
     pc_init, _ = ability_modifier(scores.score(init_rule.ability), ctx.profile)
-    pc_atk, _ = ability_modifier(scores.score(weapon.weapon.attack_ability), ctx.profile)
+    pc_atk, _ = ability_modifier(scores.score(wp.stat), ctx.profile)
     combatants = [Combatant(combatant_id="pc", name=ctx.character.name, side="player",
                             armor_class=ctx.character.armor_class, hp=ctx.character.hp_current,
-                            max_hp=ctx.character.hp_max, attack_modifier=pc_atk, damage=weapon.weapon.damage,
+                            max_hp=ctx.character.hp_max, attack_modifier=pc_atk, damage=wp.damage,
                             initiative_modifier=pc_init)]
     for e, m in enemies:
         combatants.append(Combatant(combatant_id=str(e.id), name=e.name, side="enemy", armor_class=m.armor_class,

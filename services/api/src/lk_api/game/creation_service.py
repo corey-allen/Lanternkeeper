@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 
 from lk_rules import RulesProfile
 from lk_rules.creation import CharacterBuild, CreationDraft, finalize
-from lk_rules.definitions import AncestryDef, ClassDef, DeityDef, LanguagesDef, NamedEntry
+from lk_rules.definitions import AncestryDef, ClassDef, CurrencyDef, DeityDef, ItemDef, LanguagesDef, NamedEntry
 from lk_rules.dice import RollRecord
 from lk_rules.errors import RulesError
+from lk_rules.gear import Purse
 from lk_rules.inventory import Inventory
 from lk_rules.modifiers import ModTarget
 
@@ -20,10 +21,10 @@ from ..models import (
     Character,
     CharacterDraft,
     CharacterFeature,
-    CharacterInventory,
     CharacterModifier,
     DiceRoll,
 )
+from . import state as st
 from . import tools
 
 
@@ -67,6 +68,8 @@ def draft_options(profile: RulesProfile) -> dict[str, Any]:
         "deities": [d.model_dump(mode="json") for d in opt("character.deities", list[DeityDef]) or []],
         "backgrounds": [b.model_dump(mode="json") for b in opt("character.backgrounds", list[NamedEntry]) or []],
         "languages": (lambda v: v.model_dump(mode="json") if v else None)(opt("character.languages", LanguagesDef)),
+        "items": [i.model_dump(mode="json") for i in opt("items.catalog", list[ItemDef]) or [] if i.cost],
+        "currency": (lambda v: v.model_dump(mode="json") if v else None)(opt("items.currency", CurrencyDef)),
     }
 
 
@@ -89,7 +92,7 @@ def persist_build(s: Session, campaign: Campaign, build: CharacterBuild, invento
                    armor_class=build.armor_class, rule_refs=list(build.rule_refs), ancestry_key=build.ancestry_key,
                    alignment=build.alignment, deity_key=build.deity, background_key=build.background,
                    title=build.title, gear_slots=build.gear_slots, languages=list(build.languages),
-                   base_scores=build.base_scores, gold_gp=(build.gold_amount or 0) if build.gold_unit in (None, "gp") else 0,
+                   base_scores=build.base_scores,
                    pending=list(build.pending))
     s.add(ch)
     s.flush()
@@ -103,9 +106,9 @@ def persist_build(s: Session, campaign: Campaign, build: CharacterBuild, invento
     for f in build.features:
         s.add(CharacterFeature(character_id=ch.id, key=f.key, name=f.name, kind=f.kind.value, uses_per=f.uses_per,
                                uses_max=f.uses, uses_remaining=f.uses, tags=list(f.tags), source=f.source))
-    for stack in inventory.stacks:
-        s.add(CharacterInventory(character_id=ch.id, item_key=stack.item_key, name=stack.name,
-                                 quantity=stack.quantity, slots_each=stack.slots_each))
+    items = Inventory(stacks=tuple(inventory.stacks) + tuple(build.items))
+    st.save_inventory(s, ch, items)
+    st.save_purse(s, ch, Purse(coins=dict(build.coins)))
     ctx = tools.ToolContext(session=s, campaign=campaign, character=ch, profile=profile, roller=roller, action_id=None)
     who = f"{build.ancestry_name} {build.class_name}" if build.ancestry_name else build.class_name
     ctx.event("CHARACTER_CREATED", f"{ch.name} the {who} joined the campaign",

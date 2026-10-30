@@ -17,6 +17,9 @@ from sqlalchemy.orm import Session, object_session
 
 from lk_rules import RulesProfile
 from lk_rules.character import AbilityScores
+from lk_rules import Ability, RulesError
+from lk_rules.character import ability_modifier
+from lk_rules.gear import Purse, coin_slots
 from lk_rules.inventory import Inventory, ItemStack
 from lk_rules.modifiers import Feature, Modifier, Scope
 
@@ -29,6 +32,7 @@ from ..models import (
     CampaignDiscovery,
     CampaignLocationState,
     Character,
+    CharacterCoin,
     CharacterCondition,
     CharacterFeature,
     CharacterInventory,
@@ -102,6 +106,13 @@ def scores(ch: Character) -> AbilityScores:
                          WIS=ch.wis_score, CHA=ch.cha_score)
 
 
+def _coin_slots(session: Session, ch: Character, campaign: Campaign) -> int:
+    try:
+        return coin_slots(purse_of(session, ch), profile_for(campaign))
+    except RulesError:
+        return 0
+
+
 def character_modifiers(session: Session, ch: Character) -> list[Modifier]:
     """Active typed modifiers (STAT_SCORE entries are already folded into scores and skipped)."""
     out = []
@@ -124,9 +135,49 @@ def inventory_rows(session: Session, ch: Character) -> list[CharacterInventory]:
                                 .order_by(CharacterInventory.item_key)))
 
 
+def purse_of(session: Session, ch: Character) -> Purse:
+    rows = session.scalars(select(CharacterCoin).where(CharacterCoin.character_id == ch.id))
+    return Purse(coins={r.denomination: r.count for r in rows if r.count})
+
+
+def save_purse(session: Session, ch: Character, purse: Purse) -> None:
+    existing = {r.denomination: r for r in session.scalars(select(CharacterCoin).where(CharacterCoin.character_id == ch.id))}
+    for denom, row in existing.items():
+        if denom not in purse.coins:
+            session.delete(row)
+    for denom, count in purse.coins.items():
+        if denom in existing:
+            existing[denom].count = count
+        else:
+            session.add(CharacterCoin(character_id=ch.id, denomination=denom, count=count))
+
+
+def save_inventory(session: Session, ch: Character, inventory: Inventory) -> None:
+    """Replace the character's item rows with ``inventory`` (keyed by item)."""
+    rows = {r.item_key: r for r in inventory_rows(session, ch)}
+    wanted = {s.item_key: s for s in inventory.stacks}
+    for key, row in rows.items():
+        if key not in wanted:
+            session.delete(row)
+    for key, s in wanted.items():
+        row = rows.get(key) or CharacterInventory(character_id=ch.id, item_key=key)
+        row.name, row.quantity, row.slots_each = s.name, s.quantity, s.slots_each
+        row.quantity_per_slot, row.free_quantity = s.quantity_per_slot, s.free_quantity
+        row.equipped_as, row.equipped = s.equipped_as, s.equipped_as is not None
+        session.add(row)
+    session.flush()
+
+
+def stat_mods_of(ch: Character, profile: RulesProfile) -> dict[Ability, int]:
+    sc = scores(ch)
+    return {a: ability_modifier(sc.score(a), profile)[0] for a in Ability}
+
+
 def inventory_model(rows: list[CharacterInventory]) -> Inventory:
     return Inventory(stacks=tuple(ItemStack(item_key=r.item_key, name=r.name, quantity=r.quantity,
-                                            slots_each=r.slots_each, equipped=r.equipped) for r in rows))
+                                            slots_each=r.slots_each, quantity_per_slot=r.quantity_per_slot,
+                                            free_quantity=r.free_quantity, equipped_as=r.equipped_as,
+                                            equipped=r.equipped_as is not None) for r in rows))
 
 
 def discovered_ids(session: Session, campaign_id: uuid.UUID) -> set[uuid.UUID]:
@@ -241,7 +292,8 @@ def player_view(session: Session, campaign: Campaign) -> dict[str, Any]:
             "armor_class": ch.armor_class, "rule_refs": ch.rule_refs,
             "ancestry_key": ch.ancestry_key, "alignment": ch.alignment, "deity": ch.deity_key,
             "background": ch.background_key, "title": ch.title, "xp": ch.xp, "gear_slots": ch.gear_slots,
-            "languages": ch.languages, "gold_gp": ch.gold_gp, "pending": ch.pending,
+            "languages": ch.languages, "coins": purse_of(session, ch).coins, "pending": ch.pending,
+            "gear_slots_used": inventory_model(inventory_rows(session, ch)).slots_used + _coin_slots(session, ch, campaign),
             "features": [{"key": f.key, "name": f.name, "kind": f.kind, "uses_per": f.uses_per,
                           "uses_remaining": f.uses_remaining}
                          for f in session.scalars(select(CharacterFeature).where(CharacterFeature.character_id == ch.id))],
@@ -250,7 +302,8 @@ def player_view(session: Session, campaign: Campaign) -> dict[str, Any]:
                           for m in session.scalars(select(CharacterModifier).where(CharacterModifier.character_id == ch.id))],
         }
         view["inventory"] = [{"item_key": r.item_key, "name": r.name, "quantity": r.quantity,
-                              "slots_each": r.slots_each} for r in inv]
+                              "slots_each": r.slots_each, "quantity_per_slot": r.quantity_per_slot,
+                              "free_quantity": r.free_quantity, "equipped_as": r.equipped_as} for r in inv]
         view["conditions"] = [{"key": c.condition_key, "expires_at_minute": c.expires_at_minute}
                               for c in session.scalars(select(CharacterCondition)
                                                        .where(CharacterCondition.character_id == ch.id))]

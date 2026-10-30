@@ -245,3 +245,18 @@ def test_changing_roll_affecting_choices_after_rolling_is_rejected():
     tampered = draft.model_copy(update={"roll_basis": []})
     with pytest.raises(ValidationFailed, match="changed after rolling"):
         finalize(tampered, P)
+
+
+def test_starting_gear_is_bought_with_rolled_gold():
+    from lk_rules.gear import Purchase
+
+    draft, _ = _rolled()  # gold roll 4 x 3 = 12 gp
+    base = {"name": "Bryn", "alignment": "order", "trait_choices": {"stalwart": {"stat": "STR"}}}
+    draft = draft.model_copy(update={**base, "purchases": [Purchase(item_key="short_blade", quantity=1),
+                                                           Purchase(item_key="travel_kit", quantity=1)]})
+    draft.talents[0].choices.update({"stat": "CON"})
+    build = finalize(draft, P)
+    assert {s.item_key for s in build.items} >= {"short_blade", "torch", "pack"} and build.coins == {"gp": 4}
+    broke = draft.model_copy(update={"purchases": [Purchase(item_key="padded_coat", quantity=2)]})
+    with pytest.raises(ValidationFailed, match="starting gear"):
+        finalize(broke, P)

@@ -52,6 +52,21 @@ export default function CharacterPage({ params }: { params: Promise<{ id: string
     }
   }
 
+  async function invAction(kind: "equip" | "unequip" | "drop", itemKey: string) {
+    if (!v) return;
+    setBusy(true);
+    setError(null);
+    try {
+      view.setData(await post<PlayerView>(`/campaigns/${id}/inventory/${kind}`,
+        { item_key: itemKey, expected_version: v.campaign.version }));
+    } catch (err) {
+      setError(errorText(err));
+      await view.reload();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function attach(adventureId: string) {
     try {
       await patch(`/campaigns/${id}`, { adventure_id: adventureId });
@@ -97,7 +112,9 @@ export default function CharacterPage({ params }: { params: Promise<{ id: string
                 {[v.character.ancestry_key, v.character.alignment, v.character.title, v.character.deity]
                   .filter(Boolean).join(" · ")}
                 {v.character.gear_slots ? ` · ${v.character.gear_slots} gear slots` : ""}
-                {v.character.gold_gp ? ` · ${v.character.gold_gp} gp` : ""}
+                {` · ${v.character.gear_slots_used}/${v.character.gear_slots ?? "?"} slots used`}
+                {Object.keys(v.character.coins).length > 0 &&
+                  ` · ${Object.entries(v.character.coins).map(([k, n]) => `${n} ${k}`).join(", ")}`}
               </p>
               {v.character.languages.length > 0 && <p className="small">Languages: {v.character.languages.join(", ")}</p>}
               {v.character.features.length > 0 && (
@@ -118,7 +135,23 @@ export default function CharacterPage({ params }: { params: Promise<{ id: string
                   <ul>{v.character.pending.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
               )}
               <h3>Inventory</h3>
-              <ul>{v.inventory.map((i) => <li key={i.item_key}>{i.name} × {i.quantity}</li>)}</ul>
+              <table>
+                <tbody>
+                  {v.inventory.map((i) => (
+                    <tr key={i.item_key}>
+                      <td>{i.name} × {i.quantity}{i.equipped_as && <span className="badge ok"> {i.equipped_as.replace("_", " ")}</span>}</td>
+                      <td className="row">
+                        {i.equipped_as ? (
+                          <button className="secondary" disabled={busy} onClick={() => invAction("unequip", i.item_key)}>Unequip</button>
+                        ) : (
+                          <button className="secondary" disabled={busy} onClick={() => invAction("equip", i.item_key)}>Equip</button>
+                        )}
+                        <button className="danger" disabled={busy} onClick={() => invAction("drop", i.item_key)}>Drop one</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
               <details>
                 <summary className="small">Rules applied ({v.character.rule_refs.length})</summary>
                 <ul className="small mono">{v.character.rule_refs.map((r) => <li key={r}>{r}</li>)}</ul>

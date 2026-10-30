@@ -22,11 +22,16 @@ from lk_rules.creation import (
     set_manual_scores,
     start_draft,
 )
-from lk_rules.inventory import Inventory
+from lk_rules import gear
+from lk_rules.definitions import ClassDef
+from lk_rules.errors import RulesError
+from lk_rules.gear import Purchase
+from lk_rules.inventory import Inventory, remove_item
 
 from ..errors import ApiError
 from ..game import creation_service as cs
 from ..game import state as st
+from ..game import tools
 from ..models import Campaign, CampaignStatus, User
 from ..security import CurrentUser
 
@@ -148,6 +153,7 @@ class DetailsBody(BaseModel):
     languages: list[str] | None = Field(default=None, max_length=10)
     trait_choices: dict[str, dict[str, Any]] | None = None
     talent_choices: dict[int, dict[str, Any]] | None = None  # index into draft.talents
+    purchases: list[Purchase] | None = Field(default=None, max_length=40)  # starting gear
 
 
 @router.put("/campaigns/{campaign_id}/character/draft/details")
@@ -157,7 +163,7 @@ def set_details(campaign_id: uuid.UUID, body: DetailsBody, request: Request, use
         c = _setup_campaign(s, user, campaign_id)
         row, draft = _require_draft(s, c)
         update = body.model_dump(exclude_none=True, exclude={"talent_choices"})
-        draft = draft.model_copy(update=update)
+        draft = type(draft).model_validate({**draft.model_dump(mode="json"), **update})  # validates choices
         if body.talent_choices:
             talents = [t.model_copy(deep=True) for t in draft.talents]
             for index, choices in body.talent_choices.items():
@@ -180,3 +186,66 @@ def finalize_draft(campaign_id: uuid.UUID, request: Request, user: User = Curren
         s.delete(row)
         s.flush()
         return st.player_view(s, c)
+
+
+# ---- inventory management (direct, versioned actions; no model involved) ---------------------
+
+
+class InventoryAction(BaseModel):
+    item_key: str = Field(min_length=1, max_length=64)
+    expected_version: int = Field(ge=0)
+    hands: gear.Hands = "main_hand"
+    quantity: int = Field(default=1, ge=1, le=999)
+
+
+def _inventory_change(request: Request, user: User, campaign_id: uuid.UUID, body: InventoryAction, kind: str) -> dict:
+    with request.app.state.db.session() as s:
+        c = st.load_campaign(s, user, campaign_id, lock=True)
+        if c.version != body.expected_version:
+            raise ApiError(409, "VERSION_CONFLICT", "Campaign state changed; reload and retry",
+                           current_version=c.version)
+        ch = st.require_character(s, c)
+        profile = st.profile_for(c)
+        inv = st.inventory_model(st.inventory_rows(s, ch))
+        stack = inv.get(body.item_key)
+        if stack is None:
+            raise ApiError(422, "ITEM_NOT_IN_INVENTORY", "You are not carrying that item")
+        classes, _ = profile.get("character.classes", list[ClassDef])
+        klass = next((k for k in classes if k.key == ch.class_key), None)
+        if kind == "equip":
+            inv = gear.equip(inv, body.item_key, profile, klass, hands=body.hands)
+            summary = f"Equipped {stack.name}"
+        elif kind == "unequip":
+            inv = gear.unequip(inv, body.item_key)
+            summary = f"Unequipped {stack.name}"
+        else:
+            inv = remove_item(inv, body.item_key, body.quantity)
+            summary = f"Dropped {body.quantity} x {stack.name}"
+        st.save_inventory(s, ch, inv)
+        ctx = tools.ToolContext(session=s, campaign=c, character=ch, profile=profile,
+                                roller=request.app.state.services.roller, action_id=None)
+        before = ch.armor_class
+        try:
+            tools.refresh_armor_class(ctx)
+        except RulesError:
+            pass  # profile without armor rules: AC stays as recorded
+        ctx.event(f"ITEM_{kind.upper()}", summary, {"item_key": body.item_key, "quantity": body.quantity,
+                                                    "hands": body.hands, "ac_before": before, "ac_after": ch.armor_class})
+        c.version += 1
+        s.flush()
+        return st.player_view(s, c)
+
+
+@router.post("/campaigns/{campaign_id}/inventory/equip")
+def equip_item(campaign_id: uuid.UUID, body: InventoryAction, request: Request, user: User = CurrentUser) -> dict:
+    return _inventory_change(request, user, campaign_id, body, "equip")
+
+
+@router.post("/campaigns/{campaign_id}/inventory/unequip")
+def unequip_item(campaign_id: uuid.UUID, body: InventoryAction, request: Request, user: User = CurrentUser) -> dict:
+    return _inventory_change(request, user, campaign_id, body, "unequip")
+
+
+@router.post("/campaigns/{campaign_id}/inventory/drop")
+def drop_item(campaign_id: uuid.UUID, body: InventoryAction, request: Request, user: User = CurrentUser) -> dict:
+    return _inventory_change(request, user, campaign_id, body, "drop")

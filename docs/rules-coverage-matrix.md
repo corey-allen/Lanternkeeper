@@ -31,6 +31,10 @@ No rule value in this repository is taken from Shadowdark. See `docs/licensing-r
 | `check.contested` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
 | `luck.tokens` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
 | `rulings.approval` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
+| `gear.equip` | `gear` | yes | items, classes, armor class | AVAILABLE | BLOCKED | proficiency, roles, two-handed, AC recompute |
+| `gear.coins` | `gear` | yes | currency | AVAILABLE | BLOCKED | coin slots, exact pay, automatic change |
+| `gear.buy_starting` | `creation`, `gear` | yes | items, currency, starting gold | AVAILABLE | BLOCKED | all-issues purchase, capacity incl. coins |
+| `gear.shops` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
 | `inventory.manage` | `inventory` | yes | items, capacity | AVAILABLE | BLOCKED | add/remove/consume, errors |
 | `time.advance` | `clock` | yes | action minutes | AVAILABLE | BLOCKED | advance, bounds |
 | `light.duration` | `clock` | yes | items (light duration) | AVAILABLE | BLOCKED | burn-down, expiry |

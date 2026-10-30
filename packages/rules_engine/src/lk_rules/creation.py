@@ -17,6 +17,7 @@ from .abilities import Ability
 from .definitions import (
     AncestryDef,
     ClassDef,
+    CurrencyDef,
     DeityDef,
     DiceAmount,
     HitPointRule,
@@ -30,7 +31,8 @@ from .definitions import (
 )
 from .dice import DiceExpression, RollRecord, Roller, roll, roll_die_with_mode
 from .errors import ValidationFailed
-from .inventory import capacity_slots
+from .gear import Purchase, Purse, buy, normalize
+from .inventory import Inventory, ItemStack, capacity_slots
 from .modifiers import Feature, Modifier, ModTarget, Scope, collect
 from .profile import ArmorClassRule, ModifierBand, RuleRef, RulesProfile, ScoreRange
 
@@ -161,6 +163,7 @@ class CreationDraft(BaseModel):
     background: str | None = None
     deity: str | None = None
     languages: list[str] = Field(default_factory=list)
+    purchases: list[Purchase] = Field(default_factory=list)  # starting gear bought with starting gold
 
 
 def _stat_rule(profile: RulesProfile) -> StatGeneration:
@@ -323,6 +326,8 @@ class CharacterBuild(BaseModel):
     pending: tuple[str, ...]
     gold_amount: int | None
     gold_unit: str | None
+    items: tuple[ItemStack, ...] = ()
+    coins: dict[str, int] = Field(default_factory=dict)
     rule_refs: tuple[str, ...]
 
 
@@ -438,6 +443,21 @@ def finalize(draft: CreationDraft, profile: RulesProfile) -> CharacterBuild:
         if any(tiers):
             pending.append(f"spells: choose {list(tiers)} spells by tier once spellcasting is supported")
 
+    inventory, purse = Inventory(), Purse()
+    if draft.gold_amount is not None and draft.gold_unit:
+        cur, cur_ref = profile.optional("items.currency", CurrencyDef)
+        if cur is not None:
+            refs.append(cur_ref)
+            rates = {d.key: d.value for d in cur.denominations}
+            purse = normalize(draft.gold_amount * rates.get(draft.gold_unit, 0), cur)
+        else:
+            purse = Purse(coins={draft.gold_unit: draft.gold_amount})
+    if draft.purchases:
+        try:
+            inventory, purse = buy(inventory, purse, draft.purchases, profile, capacity=gear_slots)
+        except ValidationFailed as exc:
+            issues.extend(f"starting gear: {i}" for i in exc.issues)
+
     if issues:
         raise ValidationFailed(issues)
 
@@ -453,6 +473,7 @@ def finalize(draft: CreationDraft, profile: RulesProfile) -> CharacterBuild:
         deity=draft.deity, background=draft.background, title=title,
         modifiers=modifiers,  # STAT_SCORE entries are already folded into scores; kept for audit
         features=features, pending=tuple(pending), gold_amount=draft.gold_amount, gold_unit=draft.gold_unit,
+        items=inventory.stacks, coins=dict(purse.coins),
         rule_refs=tuple(dict.fromkeys(str(r) for r in refs)))
 
 

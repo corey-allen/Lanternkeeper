@@ -24,7 +24,7 @@ from .creation import (
 from .definitions import ClassDef, HitPointRule, StatGeneration
 from .errors import UnverifiedRule, ValidationFailed
 from .dice import DiceExpression
-from .inventory import Inventory, ItemStack, capacity_slots, check_capacity
+from .inventory import Inventory, add_item, check_capacity
 from .profile import ModifierBand, RuleRef, RulesProfile
 
 
@@ -75,24 +75,18 @@ class CharacterSheet(BaseModel):
 
 def build_inventory(items: list[StartingItem], profile: RulesProfile, build: CharacterBuild) -> Inventory:
     issues: list[str] = []
-    stacks: list[ItemStack] = []
     for wanted in items:
         item_def, _ = profile.item(wanted.item_key)
         if item_def is None:
             issues.append(f"unknown item {wanted.item_key!r}")
             continue
-        stacks.append(ItemStack(item_key=item_def.key, name=item_def.name, quantity=wanted.quantity,
-                                slots_each=item_def.slots))
     if issues:
         raise ValidationFailed(issues)
-    inventory = Inventory(stacks=tuple(stacks))
-    check_capacity(inventory, profile, scores=build.scores,
-                   bonus_slots=build.gear_slots - _base_capacity(profile, build))
+    inventory = Inventory()
+    for wanted in items:
+        inventory = add_item(inventory, wanted.item_key, wanted.quantity, profile, check=False)
+    check_capacity(inventory, profile, capacity=build.gear_slots)
     return inventory
-
-
-def _base_capacity(profile: RulesProfile, build: CharacterBuild) -> int:
-    return capacity_slots(profile, scores=build.scores)[0]
 
 
 def validate_character(spec: CharacterSpec, profile: RulesProfile) -> CharacterSheet:

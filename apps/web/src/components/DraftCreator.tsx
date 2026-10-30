@@ -21,12 +21,15 @@ type Draft = {
   hp_roll_total: number | null; talents: { roll_id: string; total: number; row_index: number; option_key: string;
     choices: Choices }[]; gold_amount: number | null; gold_unit: string | null; name: string;
   alignment: string | null; background: string | null; deity: string | null; languages: string[];
+  purchases: { item_key: string; quantity: number }[];
 };
+type ShopItem = { key: string; name: string; category: string; cost: { amount: number; unit: string } | null;
+  slots: number; quantity_per_slot: number };
 type DraftView = {
   draft: Draft | null; can_reroll_stats?: boolean;
   options: { ancestries: AncestryDef[]; classes: ClassDef[]; alignments: string[];
     deities: { key: string; name: string; alignment: string }[]; backgrounds: { key: string; name: string }[];
-    languages: { common: string[]; rare: string[] } | null };
+    languages: { common: string[]; rare: string[] } | null; items?: ShopItem[] };
   preview?: { ready: boolean; issues: string[]; build?: Record<string, unknown> };
 };
 
@@ -110,6 +113,7 @@ export function DraftCreator({ campaignId, onDone }: { campaignId: string; onDon
   const [traits, setTraits] = useState<Record<string, Choices>>({});
   const [talents, setTalents] = useState<Record<number, Choices>>({});
   const [details, setDetails] = useState({ name: "", alignment: "", background: "", deity: "", languages: [] as string[] });
+  const [cart, setCart] = useState<Record<string, number>>({});
 
   function adopt(v: DraftView) {
     setView(v);
@@ -120,6 +124,7 @@ export function DraftCreator({ campaignId, onDone }: { campaignId: string; onDon
     setTalents(Object.fromEntries(d.talents.map((t, i) => [i, t.choices])));
     setDetails({ name: d.name, alignment: d.alignment ?? "", background: d.background ?? "", deity: d.deity ?? "",
       languages: d.languages });
+    setCart(Object.fromEntries((d.purchases ?? []).map((p) => [p.item_key, p.quantity])));
   }
 
   useEffect(() => {
@@ -141,6 +146,7 @@ export function DraftCreator({ campaignId, onDone }: { campaignId: string; onDon
   const saveChoices = () => put("/details", {
     ...details, alignment: details.alignment || null, background: details.background || null,
     deity: details.deity || null, trait_choices: traits, talent_choices: talents,
+    purchases: Object.entries(cart).filter(([, q]) => q > 0).map(([item_key, quantity]) => ({ item_key, quantity })),
   });
 
   if (!view) return <p className="muted">{error ?? "Loading…"}</p>;
@@ -229,6 +235,29 @@ export function DraftCreator({ campaignId, onDone }: { campaignId: string; onDon
         </section>
       )}
 
+      {d.stage === "rolled" && d.gold_amount !== null && (o.items ?? []).length > 0 && (
+        <section className="card stack" aria-label="Starting gear">
+          <h2 style={{ margin: 0 }}>Starting gear</h2>
+          <p className="small">Spend up to {d.gold_amount} {d.gold_unit}. Change is made automatically. Slots and
+            cost are checked when you save.</p>
+          <table>
+            <thead><tr><th>Item</th><th>Cost</th><th>Slots</th><th>Qty</th></tr></thead>
+            <tbody>
+              {(o.items ?? []).map((it) => (
+                <tr key={it.key}>
+                  <td>{it.name} <span className="small muted">{it.category}</span></td>
+                  <td className="small">{it.cost ? `${it.cost.amount} ${it.cost.unit}` : "-"}</td>
+                  <td className="small">{it.slots}{it.quantity_per_slot > 1 ? ` per ${it.quantity_per_slot}` : ""}</td>
+                  <td><input type="number" min={0} max={99} value={cart[it.key] ?? 0} style={{ width: 64 }}
+                    aria-label={`Quantity of ${it.name}`}
+                    onChange={(e) => setCart({ ...cart, [it.key]: Number(e.target.value) })} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
       <section className="card stack" aria-label="Details">
         <h2 style={{ margin: 0 }}>4. Details</h2>
         <div className="row">
@@ -279,7 +308,8 @@ export function DraftCreator({ campaignId, onDone }: { campaignId: string; onDon
         <h2 style={{ margin: 0 }}>5. Finish</h2>
         {view.preview?.ready ? (
           <p className="small">Ready: HP {String(view.preview.build?.max_hp)}, AC {String(view.preview.build?.armor_class)},
-            gear slots {String(view.preview.build?.gear_slots)}.</p>
+            gear slots {String(view.preview.build?.gear_slots)}. Coins left: {Object.entries(
+              (view.preview.build?.coins as Record<string, number>) ?? {}).map(([k, v]) => `${v} ${k}`).join(", ") || "none"}.</p>
         ) : (
           <ul className="small">{view.preview?.issues.map((i, k) => <li key={k}>{i}</li>)}</ul>
         )}

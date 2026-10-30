@@ -35,7 +35,10 @@ export const del = <T>(path: string) => api<T>(path, { method: "DELETE" });
 export function errorText(e: unknown): string {
   if (e instanceof ApiError) {
     const issues = (e.details?.issues as unknown[] | undefined)?.map((i) => (typeof i === "string" ? i : JSON.stringify(i)));
-    return issues?.length ? `${e.message}: ${issues.join("; ")}` : `${e.message} (${e.code})`;
+    if (!issues?.length) return `${e.message} (${e.code})`;
+    const joined = issues.join("; ");
+    // Rules errors already use the joined issues as their message; don't repeat them.
+    return e.message === joined ? joined : `${e.message}: ${joined}`;
   }
   return e instanceof Error ? e.message : String(e);
 }
@@ -60,13 +63,15 @@ export type PlayerView = {
     id: string; name: string; class_key: string; level: number; ability_scores: Record<string, number>;
     hp_current: number; hp_max: number; armor_class: number; rule_refs: string[];
     ancestry_key: string | null; alignment: string | null; deity: string | null; background: string | null;
-    title: string | null; xp: number; gear_slots: number | null; languages: string[]; gold_gp: number;
+    title: string | null; xp: number; gear_slots: number | null; gear_slots_used: number; languages: string[];
+    coins: Record<string, number>;
     pending: string[];
     features: { key: string; name: string; kind: string; uses_per: string | null; uses_remaining: number | null }[];
     modifiers: { target: string; mode: string; amount: number; from_stat: string | null; scope: Record<string, string>;
       source: string; label: string; folded: boolean }[];
   };
-  inventory: { item_key: string; name: string; quantity: number; slots_each: number }[];
+  inventory: { item_key: string; name: string; quantity: number; slots_each: number; quantity_per_slot: number;
+    free_quantity: number; equipped_as: string | null }[];
   conditions: { key: string; expires_at_minute: number | null }[];
   location: null | { id: string; name: string; description: string; citations: string[] };
   exits: { location_id: string; name: string; label: string }[];

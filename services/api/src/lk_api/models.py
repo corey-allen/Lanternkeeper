@@ -669,7 +669,6 @@ class Character(Base, TimestampMixin):
     gear_slots: Mapped[int | None] = mapped_column(Integer)
     languages: Mapped[list[str]] = mapped_column(JSONType, default=list, server_default="[]", nullable=False)
     base_scores: Mapped[dict[str, int] | None] = mapped_column(JSONType)  # before level-1 talent increases
-    gold_gp: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     pending: Mapped[list[str]] = mapped_column(JSONType, default=list, server_default="[]", nullable=False)
 
 
@@ -726,7 +725,18 @@ class CharacterInventory(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     slots_each: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity_per_slot: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    free_quantity: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     equipped: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    equipped_as: Mapped[str | None] = mapped_column(String(16))
+
+
+class CharacterCoin(Base):
+    __tablename__ = "character_coin"
+    __table_args__ = (CheckConstraint("count >= 0", name="ck_coin_count"),)
+    character_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("character.id", ondelete="CASCADE"), primary_key=True)
+    denomination: Mapped[str] = mapped_column(String(16), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class CharacterCondition(Base):

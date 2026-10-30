@@ -114,6 +114,9 @@ entries → private conformance tests → API tool and play-loop integration →
    must pick from (`check.task_tags`), trained-task automatic success outside combat (ADR-0009 #3).
    Deferred: contested checks (with stealth, D6), luck tokens and approved rulings (own step).
 3. Gear and inventory: slot capacity rules, item catalogue structure, currency.
+   **Done (2026-10-29, ADR-0012):** typed catalogue with kits, coin slots, starting-gear purchase in the
+   creation draft, proficiency, equip/unequip/drop, AC from worn armor, attack stat and versatile damage
+   from the wielded weapon. Deferred: shops in play, light fuel, real-time light (D4).
 4. Light and time: light duration semantics. If the book times light in real time, add a
    real-time clock mode alongside game time, with pause/resume semantics as an explicit decision.
 5. Combat: initiative, attacks, damage, critical results, morale, dying and death.

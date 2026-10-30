@@ -19,6 +19,9 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from .abilities import Ability
 from .definitions import (
     AncestryDef,
+    AttackStatsRule,
+    CurrencyDef,
+    ItemDef,
     CapacityRule,
     ClassDef,
     DeityDef,
@@ -64,24 +67,6 @@ class ModifierBand(BaseModel):
     modifier: int
 
 
-class WeaponDef(BaseModel):
-    damage: str
-    attack_ability: Ability
-
-
-class LightDef(BaseModel):
-    duration_minutes: int = Field(ge=1)
-
-
-class ItemDef(BaseModel):
-    key: str
-    name: str
-    slots: int = Field(ge=0)
-    weapon: WeaponDef | None = None
-    light: LightDef | None = None
-    consumable: bool = False
-
-
 class ArmorClassRule(BaseModel):
     base: int
     add_ability: Ability | None = None
@@ -120,6 +105,8 @@ RULE_TYPES: dict[str, Any] = {
     "character.starting_gold": DiceAmount,
     "character.armor_class": ArmorClassRule,
     "items.catalog": list[ItemDef],
+    "items.currency": CurrencyDef,
+    "combat.attack_stats": AttackStatsRule,
     "inventory.capacity": CapacityRule,
     "time.action_minutes": dict[str, int],
     "combat.initiative": InitiativeRule,

@@ -182,7 +182,8 @@ def test_inventory_errors():
         add_item(Inventory(), "rope", 11, P)
     with pytest.raises(InventoryError):
         add_item(Inventory(), "rope", 0, P)
-    assert add_item(Inventory(), "silver_coin", 500, P).slots_used == 0
+    assert add_item(Inventory(), "rations", 3, P).slots_used == 2  # two per slot
+    assert add_item(Inventory(), "pack", 2, P).slots_used == 1  # the first pack is free
 
 
 # ---- time and light ---------------------------------------------------------

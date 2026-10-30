@@ -78,7 +78,7 @@ def test_draft_flow_end_to_end(app_factory, tmp_path, fixture_pdf, manifest):
         assert ch["name"] == "Bryn" and ch["ancestry_key"] == "stonekin" and ch["alignment"] == "order"
         assert any(f["kind"] == "IMMUNITY_SURPRISE" for f in ch["features"])
         assert any(m["source"].startswith("class:warden/stalwart") for m in ch["modifiers"])
-        assert ch["gold_gp"] == 12 and ch["title"] == "Gatewatch"
+        assert ch["coins"] == {"gp": 12} and ch["title"] == "Gatewatch"
         assert client.get(f"{base}/draft").json()["draft"] is None  # the draft is consumed
         assert client.post(f"{base}/draft").json()["error"]["code"] == "CHARACTER_EXISTS"
 
@@ -158,5 +158,53 @@ def test_checks_apply_character_features_and_modifiers(app_factory, tmp_path, fi
         client.app.state.services.provider = provider
         bad = act(client, cid, "I juggle")
         assert bad["status"] == "REJECTED" and bad["error"]["code"] == "INVALID_TASK"
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_starting_gear_equip_and_armor_class(app_factory, tmp_path):
+    client = _client(app_factory, tmp_path)
+    try:
+        cid = _campaign(client)
+        base = f"/api/v1/campaigns/{cid}/character"
+        client.post(f"{base}/draft")
+        client.put(f"{base}/draft/origin", json={"ancestry_key": "stonekin", "class_key": "warden"})
+        view = client.post(f"{base}/draft/roll").json()
+        assert view["draft"]["gold_amount"] == 12 and any(i["key"] == "padded_coat" for i in view["options"]["items"])
+        details = {"name": "Bryn", "alignment": "order", "trait_choices": {"stalwart": {"stat": "STR"}},
+                   "talent_choices": {"0": {"weapon_type": "spear", "stat": "STR", "alternative": 1,
+                                            "distribute": {"STR": 2}}}}
+        too_much = client.put(f"{base}/draft/details", json={**details, "purchases": [
+            {"item_key": "padded_coat", "quantity": 2}]}).json()
+        assert not too_much["preview"]["ready"] and "starting gear" in " ".join(too_much["preview"]["issues"])
+        ok = client.put(f"{base}/draft/details", json={**details, "purchases": [
+            {"item_key": "padded_coat", "quantity": 1}, {"item_key": "buckler", "quantity": 1}]}).json()
+        assert ok["preview"]["ready"], ok["preview"]
+        state = client.post(f"{base}/draft/finalize").json()
+        ch = state["character"]
+        assert ch["coins"] == {"gp": 0} or ch["coins"] == {}  # 12 gp spent exactly
+        assert {i["item_key"] for i in state["inventory"]} == {"padded_coat", "buckler"}
+        ac_unarmored = ch["armor_class"]
+        version = state["campaign"]["version"]
+
+        r = client.post(f"/api/v1/campaigns/{cid}/inventory/equip",
+                        json={"item_key": "padded_coat", "expected_version": version})
+        assert r.status_code == 200, r.text
+        state = r.json()
+        assert state["character"]["armor_class"] == ac_unarmored + 1  # coat 11 + DEX vs 10 + DEX
+        state = client.post(f"/api/v1/campaigns/{cid}/inventory/equip",
+                            json={"item_key": "buckler", "expected_version": state["campaign"]["version"]}).json()
+        assert state["character"]["armor_class"] == ac_unarmored + 2
+        assert {i["item_key"]: i["equipped_as"] for i in state["inventory"]} == {"padded_coat": "armor",
+                                                                                 "buckler": "shield"}
+        stale = client.post(f"/api/v1/campaigns/{cid}/inventory/unequip",
+                            json={"item_key": "buckler", "expected_version": version})
+        assert stale.status_code == 409
+        state = client.post(f"/api/v1/campaigns/{cid}/inventory/drop",
+                            json={"item_key": "buckler", "expected_version": state["campaign"]["version"]}).json()
+        assert state["character"]["armor_class"] == ac_unarmored + 1
+        missing = client.post(f"/api/v1/campaigns/{cid}/inventory/equip",
+                              json={"item_key": "sling", "expected_version": state["campaign"]["version"]})
+        assert missing.status_code == 422
     finally:
         client.__exit__(None, None, None)
