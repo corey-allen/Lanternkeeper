@@ -33,7 +33,7 @@ from lk_rules.dice import Roller
 
 from ..db import Database
 from ..errors import ApiError
-from ..models import ActionRecord, ActionStatus, AdventureEntity, CampaignStatus, Location, NPCDefinition, User
+from ..models import ActionRecord, ActionStatus, AdventureEntity, CampaignStatus, Location, NPCDefinition, User, utcnow
 from .. import retrieval
 from . import state as st
 from . import tools
@@ -188,6 +188,7 @@ def _answer_items(svc: Services, snap: Snapshot, topic: str) -> list[ContextItem
 
 
 async def handle_action(svc: Services, user: User, campaign_id: uuid.UUID, req: ActionRequest) -> dict[str, Any]:
+    received_at = utcnow()  # real time is charged up to here; model generation time is not (ADR-0013)
     snap = _snapshot(svc, user, campaign_id, req)
     if isinstance(snap, dict):
         return snap
@@ -230,6 +231,8 @@ async def handle_action(svc: Services, user: User, campaign_id: uuid.UUID, req: 
                 s.flush()
             ctx = tools.ToolContext(session=s, campaign=campaign, character=st.require_character(s, campaign),
                                     profile=st.profile_for(campaign), roller=svc.roller, action_id=rec.id)
+            tools.credit_real_time(ctx, received_at, pause=True)
+            tools.flush_real_time(ctx, only_at_deadline=False)
             status, error = _execute(ctx, proposal, problem)
             if ctx.events:
                 campaign.version += 1
@@ -296,6 +299,7 @@ def _execute(ctx: tools.ToolContext, p: IntentProposal, problem: tuple[str, str]
     if problem:
         return ActionStatus.REJECTED, {"code": problem[0], "message": problem[1]}
     # Tools run inside a SAVEPOINT so a rejected tool leaves no partial state behind.
+    marks = len(ctx.events), len(ctx.rolls), len(ctx.outcome), len(ctx.rule_refs)
     savepoint = ctx.session.begin_nested()
     try:
         status, error = _dispatch(ctx, p)
@@ -310,10 +314,8 @@ def _execute(ctx: tools.ToolContext, p: IntentProposal, problem: tuple[str, str]
         savepoint.commit()
     else:
         savepoint.rollback()
-        ctx.events.clear()
-        ctx.rolls.clear()
-        ctx.outcome.clear()
-        ctx.rule_refs.clear()
+        # Keep what happened before the tool ran (real time that had already passed).
+        del ctx.events[marks[0]:], ctx.rolls[marks[1]:], ctx.outcome[marks[2]:], ctx.rule_refs[marks[3]:]
     return status, error
 
 
@@ -333,10 +335,8 @@ def _dispatch(ctx: tools.ToolContext, p: IntentProposal):
             tools.search_location(ctx)
         case IntentKind.ABILITY_CHECK:
             tools.request_ability_check(ctx, p.ability or "", p.difficulty or "", "player-declared action",
-                                        task_tag=p.task_tag)
-            minutes, ref = ctx.profile.action_minutes("check")
-            ctx.rule_refs.append(str(ref))
-            tools.advance_game_time(ctx, minutes, "attempting an action")
+                                        task_tag=p.task_tag, needs_sight=bool(p.needs_sight))
+            tools.spend_time(ctx, "crawl", "check", "attempting an action")
         case IntentKind.TALK:
             tools.record_npc_interaction(ctx, p.target_id or "", p.topic or "")
         case IntentKind.ATTACK:

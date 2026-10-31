@@ -45,6 +45,8 @@ def _task_tag(text: str, allowed: tuple[str, ...]) -> str | None:
     return None
 
 
+_SIGHT = r"\b(look|see|spot|notice|read|aim|find|track|balance|climb|disarm|pick the lock)"
+
 _CHECK_VERBS = {
     "STR": r"\b(climb|force|lift|push|break|jump|kick|bend)\b",
     "DEX": r"\b(sneak|hide|balance|dodge|pick the lock|tumble|disarm)\b",
@@ -87,7 +89,8 @@ def interpret(options: SceneOptions, player_input: str) -> IntentProposal:
     for ability, pattern in _CHECK_VERBS.items():
         if re.search(pattern, text):
             return IntentProposal(intent=IntentKind.ABILITY_CHECK, ability=ability, difficulty="normal",
-                                  task_tag=_task_tag(text, options.task_tags))
+                                  task_tag=_task_tag(text, options.task_tags),
+                                  needs_sight=bool(re.search(_SIGHT, text)))
     if "?" in text or re.match(r"\s*(what|who|where|why|how|describe|look|tell me)\b", text):
         return IntentProposal(intent=IntentKind.ASK, topic=player_input[:300])
     if re.search(r"\bwait\b", text):

@@ -621,7 +621,10 @@ class RulesCoverageRecord(Base):
 
 class Campaign(Base, TimestampMixin):
     __tablename__ = "campaign"
-    __table_args__ = (CheckConstraint("version >= 0", name="ck_campaign_version"),)
+    __table_args__ = (
+        CheckConstraint("version >= 0", name="ck_campaign_version"),
+        CheckConstraint("idle_pause_seconds BETWEEN 30 AND 3600", name="ck_campaign_idle_pause"),
+    )
     id: Mapped[uuid.UUID] = pk()
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -633,6 +636,10 @@ class Campaign(Base, TimestampMixin):
     status: Mapped[CampaignStatus] = mapped_column(enum(CampaignStatus, "campaign_status"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     current_location_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("location.entity_id", ondelete="RESTRICT"))
+    # Time settings (ADR-0013). NULL means the profile's default.
+    light_timing: Mapped[str | None] = mapped_column(String(16))
+    light_multiple: Mapped[str | None] = mapped_column(String(16))
+    idle_pause_seconds: Mapped[int] = mapped_column(Integer, default=300, server_default="300", nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
@@ -850,9 +857,15 @@ class DefeatedCreature(Base):
 
 class WorldClock(Base):
     __tablename__ = "world_clock"
-    __table_args__ = (CheckConstraint("minutes_elapsed >= 0", name="ck_clock_nonnegative"),)
+    __table_args__ = (
+        CheckConstraint("minutes_elapsed >= 0", name="ck_clock_nonnegative"),
+        CheckConstraint("realtime_pending_seconds >= 0", name="ck_clock_pending"),
+    )
     campaign_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("campaign.id", ondelete="CASCADE"), primary_key=True)
     minutes_elapsed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Real-time play clock bookkeeping (ADR-0013): not game state until flushed into minutes_elapsed.
+    realtime_last_tick_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    realtime_pending_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
 
 class ActiveLight(Base):

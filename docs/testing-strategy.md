@@ -1,6 +1,6 @@
 # Testing strategy
 
-Run everything: `uv run pytest` (156 tests: 155 pass, 1 skips without Tesseract, as of 2026-10-29; plus private conformance tests in `private/conformance/`, run only on the owner's machine).
+Run everything: `uv run pytest` (174 tests: 173 pass, 1 skips without Tesseract, as of 2026-10-31; plus private conformance tests in `private/conformance/`, run only on the owner's machine).
 
 Integration tests use **real PostgreSQL**: an embedded server from the `pgserver` dev dependency,
 or `LK_TEST_DATABASE_URL` (e.g. CI service container). Each test creates a fresh database by
@@ -14,6 +14,7 @@ running the Alembic migrations, so the migrations are exercised on every run.
 | Orchestration unit | `packages/dm_orchestration/tests` | Fake provider interpretation, proposal schema has no outcome fields, data-section escaping, scripted invalid responses, timeout/retry policy, remote opt-in, OpenAI-compatible adapter (mock transport), injection detection, output guard. |
 | API security | `services/api/tests/test_api_security.py` | Health, auth required everywhere, tampered tokens, rate limit, cookie flags, cross-user isolation, no download routes, configuration safety (seeded dice, insecure roller, remote AI, short key), house-rule acceptance, unverified profile, validation errors, coverage exposure. |
 | Ingestion | `test_ingestion.py` | Upload validation and limits, private storage, page/passage provenance with bboxes, OCR fallback and OCR-unavailable reporting, duplicates/conflicts/broken refs/injection warnings, idempotent re-runs, transient retry, permanent failure, stale-lock recovery, review edit/approve/reject, approval-only authority, re-ingest refusal, deletion of originals and derived data. |
+| Clock | `test_clock_api.py` | Real-time credit and idle pause, no charge while an action is processed, heartbeat flush when a light burns out, pause, rounds mode and time settings (version, validation, event), ride-along/restart, fuel, darkness disadvantage with the rule cited on the roll. |
 | Play loop | `test_play.py` | Full vertical slice incl. app restart and resume with identical state hash; idempotent retries; stale versions; light expiry; unsupported mechanics; invalid proposals; provider timeout; narration fallback; secret non-disclosure and output guard; prompt injection; NPC knowledge boundaries; deterministic combat; incapacitation without invented death rules; append-only events; export excludes source text; action audit. |
 | Evaluation | `test_evals.py` + `fixtures/evals/saltmere_eval.json` | Metrics below. |
 | Browser E2E | `apps/web/tests/vertical-slice.spec.ts` (Playwright) | Login → library → upload → review → campaign → character → play → reload. Needs a running stack and `LK_E2E_PASSWORD`. **Not yet run in CI**; the same flow was exercised manually in a browser on 2026-10-29. |

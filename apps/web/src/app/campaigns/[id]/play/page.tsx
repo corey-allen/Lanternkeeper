@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, use, useEffect, useRef, useState } from "react";
+import { FormEvent, ReactNode, use, useEffect, useRef, useState } from "react";
+import { LightClock, useRealTimeClock } from "@/components/LightClock";
 import { Status, useLoad } from "@/components/useLoad";
 import { ActionResponse, ApiError, PlayerView, api, errorText, newIdempotencyKey, post } from "@/lib/api";
 
@@ -53,7 +54,7 @@ function TurnView({ t }: { t: Turn }) {
   );
 }
 
-function Sidebar({ v }: { v: PlayerView }) {
+function Sidebar({ v, clock }: { v: PlayerView; clock: ReactNode }) {
   return (
     <aside className="stack" aria-label="Status">
       <section className="card">
@@ -71,10 +72,8 @@ function Sidebar({ v }: { v: PlayerView }) {
           <div className="row">
             <span className="badge">HP {v.character.hp_current}/{v.character.hp_max}</span>
             <span className="badge">AC {v.character.armor_class}</span>
-            <span className={`badge ${v.clock.is_lit ? "ok" : "danger"}`}>{v.clock.is_lit ? "lit" : "dark"}</span>
-            <span className="badge">minute {v.clock.minutes_elapsed}</span>
           </div>
-          {v.clock.lights.map((l, i) => <p key={i}>{l.item_key}: {l.remaining_minutes} min left</p>)}
+          {clock}
           {v.conditions.map((c) => <span key={c.key} className="badge danger">{c.key}</span>)}
           <h3>Inventory</h3>
           <ul>{v.inventory.map((i) => <li key={i.item_key}>{i.name} × {i.quantity}</li>)}</ul>
@@ -111,6 +110,7 @@ export default function PlayPage({ params }: { params: Promise<{ id: string }> }
   const [saved, setSaved] = useState<string | null>(null);
   const pending = useRef<{ text: string; key: string } | null>(null);
   const logEnd = useRef<HTMLDivElement>(null);
+  const realTime = useRealTimeClock(id, view.data, busy, view.setData, view.reload);
 
   useEffect(() => {
     // Braces matter: newer browsers return a Promise from scrollIntoView, which React would treat as a cleanup.
@@ -130,6 +130,7 @@ export default function PlayPage({ params }: { params: Promise<{ id: string }> }
         { input: text, idempotency_key: key, expected_version: view.data.campaign.version });
       setTurns((t) => [...t, { input: text, response: r }]);
       view.setData(r.state);
+      void realTime.resume(); // the server paused the clock while it resolved the action
       pending.current = null;
       setInput("");
     } catch (err) {
@@ -187,7 +188,8 @@ export default function PlayPage({ params }: { params: Promise<{ id: string }> }
               {saved && <span role="status">{saved}</span>}
             </div>
           </section>
-          <Sidebar v={v} />
+          <Sidebar v={v} clock={<LightClock id={id} clock={v.clock} version={v.campaign.version}
+            ticking={realTime.ticking} sinceSync={realTime.sinceSync} onState={view.setData} />} />
         </div>
       )}
     </>

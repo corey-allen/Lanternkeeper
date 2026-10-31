@@ -19,6 +19,7 @@ from lk_rules import RulesProfile
 from lk_rules.character import AbilityScores
 from lk_rules import Ability, RulesError
 from lk_rules.character import ability_modifier
+from lk_rules.clock import CampaignTiming, LightPolicy, timing_options
 from lk_rules.gear import Purse, coin_slots
 from lk_rules.inventory import Inventory, ItemStack
 from lk_rules.modifiers import Feature, Modifier, Scope
@@ -248,6 +249,41 @@ def clock(session: Session, campaign: Campaign) -> tuple[int, list[ActiveLight]]
     return (wc.minutes_elapsed if wc else 0), lights
 
 
+def is_lit(session: Session, campaign: Campaign) -> bool:
+    return any(li.remaining_minutes > 0 for li in clock(session, campaign)[1])
+
+
+def timing_of(campaign: Campaign, profile: RulesProfile) -> tuple[CampaignTiming, LightPolicy]:
+    """The campaign's timing mode and multiple-light option; the profile's defaults when unset."""
+    opts = timing_options(profile)
+    mode = campaign.light_timing if campaign.light_timing in opts.modes else opts.modes[0]
+    policy = campaign.light_multiple if campaign.light_multiple in opts.multiple_sources else opts.multiple_sources[0]
+    return mode, policy  # type: ignore[return-value]
+
+
+def clock_view(session: Session, campaign: Campaign) -> dict[str, Any]:
+    """Player-facing clock. Light seconds subtract real time credited but not yet flushed (ADR-0013)."""
+    wc = session.get(WorldClock, campaign.id)
+    minutes, lights = clock(session, campaign)
+    pending = wc.realtime_pending_seconds if wc else 0
+    try:
+        profile = profile_for(campaign)
+        opts = timing_options(profile)
+        mode, policy = timing_of(campaign, profile)
+    except (RulesError, ApiError):
+        opts, mode, policy = None, None, None
+    return {
+        "minutes_elapsed": minutes, "pending_seconds": pending,
+        "running": bool(wc and wc.realtime_last_tick_at is not None),
+        "timing": mode, "multiple_lights": policy, "idle_pause_seconds": campaign.idle_pause_seconds,
+        "timing_options": list(opts.modes) if opts else [],
+        "multiple_light_options": list(opts.multiple_sources) if opts else [],
+        "lights": [{"item_key": li.item_key, "remaining_minutes": li.remaining_minutes,
+                    "remaining_seconds": max(0, li.remaining_minutes * 60 - pending)} for li in lights],
+        "is_lit": any(li.remaining_minutes * 60 - pending > 0 for li in lights),
+    }
+
+
 def restricted_texts(session: Session, campaign: Campaign, discovered: set[uuid.UUID]) -> dict[str, str]:
     """DM-only adventure text the player has not discovered. Used by the output guard."""
     if campaign.adventure_id is None:
@@ -272,16 +308,13 @@ def restricted_texts(session: Session, campaign: Campaign, discovered: set[uuid.
 def player_view(session: Session, campaign: Campaign) -> dict[str, Any]:
     discovered = discovered_ids(session, campaign.id)
     ch = character_of(session, campaign)
-    minutes, lights = clock(session, campaign)
     view: dict[str, Any] = {
         "campaign": {"id": str(campaign.id), "name": campaign.name, "status": campaign.status.value,
                      "version": campaign.version, "rules_profile": campaign.rules_profile_id,
                      "adventure_id": str(campaign.adventure_id) if campaign.adventure_id else None},
         "character": None, "inventory": [], "conditions": [], "location": None, "exits": [], "npcs": [],
         "enemies": [], "quests": [], "discoveries": [],
-        "clock": {"minutes_elapsed": minutes,
-                  "lights": [{"item_key": li.item_key, "remaining_minutes": li.remaining_minutes} for li in lights],
-                  "is_lit": any(li.remaining_minutes > 0 for li in lights)},
+        "clock": clock_view(session, campaign),
         "encounter": None, "recent_events": [], "recent_dice": [],
     }
     if ch:

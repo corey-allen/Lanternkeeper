@@ -119,6 +119,10 @@ entries → private conformance tests → API tool and play-loop integration →
    from the wielded weapon. Deferred: shops in play, light fuel, real-time light (D4).
 4. Light and time: light duration semantics. If the book times light in real time, add a
    real-time clock mode alongside game time, with pause/resume semantics as an explicit decision.
+   **Done (2026-10-31, ADR-0013):** real-time and rounds timing per campaign, server-measured heartbeats
+   with an idle pause and no charge for model time, deadline flushes, ride-along/restart, lantern fuel,
+   total darkness on sight checks, time settings in the play screen. Deferred: encounter checks in
+   darkness and while time passes, campfires (D6), light mishaps, shorter-light mode, darkness on attacks (D5).
 5. Combat: initiative, attacks, damage, critical results, morale, dying and death.
 6. Exploration: crawling rounds, danger level and encounter checks, resting and recovery.
 7. Spellcasting: casting checks, failure consequences, spell definitions (structure only in the

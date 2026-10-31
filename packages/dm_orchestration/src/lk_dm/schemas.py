@@ -102,3 +102,4 @@ class IntentProposal(BaseModel):
     clarification: str | None = Field(default=None, max_length=300)
     wait_minutes: int | None = Field(default=None, ge=1, le=600)
     task_tag: str | None = Field(default=None, max_length=64)  # one of SCENE OPTIONS.task_tags
+    needs_sight: bool | None = None  # classification: does the task depend on seeing?

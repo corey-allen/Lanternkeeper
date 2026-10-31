@@ -21,7 +21,7 @@ from .game.orchestrator import Services
 from .logging_setup import configure_logging
 from .models import Campaign, RuleReference, RulesCoverageRecord, RulesProfileRow, RulesProfileVersion, User
 from .profiles import ProfileRegistry
-from .routes import campaigns, characters, library, system
+from .routes import campaigns, characters, clock, library, system
 from .security import LoginRateLimiter, hash_password
 from .storage import FileStorage
 
@@ -131,7 +131,7 @@ def create_app(settings: Settings | None = None, *, provider: ModelProvider | No
         response.headers["cache-control"] = "no-store"
         return response
 
-    for r in (system.router, library.router, campaigns.router, characters.router):
+    for r in (system.router, library.router, campaigns.router, characters.router, clock.router):
         app.include_router(r, prefix="/api/v1")
 
     return app

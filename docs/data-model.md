@@ -71,7 +71,7 @@ visibility, source order, approver). One typed detail table per type, keyed by `
 | `npc_memory` | Content, `learned_via` (`SOURCE_DEFINED`/`OBSERVED`/`TOLD`/`EVIDENCE`), event or passage (check: at least one), minute, reliability. |
 | `quest_state` | Status with the event that last changed it. Transitions validated by `lk_rules.progression`. |
 | `encounter_state` / `encounter_participant` | Round, turn index, status (partial unique index: one active encounter per campaign); participants with turn order, initiative, AC, HP (check), attack, damage, status. |
-| `world_clock`, `active_light` | Minutes elapsed ≥ 0; lights with remaining minutes > 0 (expired lights are deleted with an event). |
+| `world_clock`, `active_light` | Minutes elapsed ≥ 0; lights with remaining minutes > 0 (expired lights are deleted with an event). `world_clock.realtime_last_tick_at` / `realtime_pending_seconds` hold real-time play credited but not yet folded into game minutes (bookkeeping, not game state; ADR-0013). `campaign.light_timing`, `light_multiple` and `idle_pause_seconds` are the campaign's time settings (NULL timing = profile default). |
 | `defeated_creature` | Creatures defeated in this campaign (with the event). |
 | `game_event` | Append-only; sequence unique per campaign; `campaign_version`; type, visibility, summary, payload, game minute, location. Trigger blocks UPDATE, and DELETE unless `SET LOCAL lanternkeeper.allow_event_purge = 'on'` (campaign deletion only). |
 | `dice_roll` | Roll id, actor, purpose, expression, individual dice (kept flags), modifier, total, rule refs, roller kind, event, action. |

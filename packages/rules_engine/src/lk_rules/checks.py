@@ -12,7 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from .character import ability_modifier
-from .definitions import NamedEntry, NaturalResults
+from .definitions import DarknessRule, NamedEntry, NaturalResults
 from .dice import RollRecord, Roller, roll_d20_with_mode
 from .errors import ValidationFailed
 from .modifiers import Applied, Feature, FeatureKind, Modifier, ModTarget, Scope, collect
@@ -29,6 +29,7 @@ class CheckRequest(BaseModel):
     purpose: str = "ability check"
     task_tag: str | None = None
     conditions: tuple[str, ...] = ()  # situational context, e.g. "total_darkness"
+    rule_refs: tuple[str, ...] = ()  # rules that set the situation (e.g. the darkness rule)
 
 
 class CheckResult(BaseModel):
@@ -83,7 +84,7 @@ def resolve_check(
         raise ValidationFailed([f"unknown difficulty {request.difficulty!r}; allowed: {sorted(table)}"])
     if request.task_tag is not None and request.task_tag not in task_tags(profile):
         raise ValidationFailed([f"unknown task category {request.task_tag!r}"])
-    refs = [str(dc_ref)]
+    refs = [str(dc_ref), *request.rule_refs]
     stat_mod, mod_ref = ability_modifier(score, profile)
     refs.append(str(mod_ref))
     all_scores = dict(scores or {})
@@ -133,6 +134,17 @@ def resolve_check(
                        rule_refs=tuple(dict.fromkeys(refs)))
 
 
+def darkness_effect(profile: RulesProfile, *, is_lit: bool, needs_sight: bool,
+                    darkness_adapted: bool = False) -> tuple[RollMode, str | None]:
+    """Roll mode imposed by total darkness on a sight-based task, and the rule that imposes it."""
+    if is_lit or not needs_sight or darkness_adapted:
+        return "normal", None
+    rule, ref = profile.optional("vision.total_darkness", DarknessRule)
+    if rule is None:
+        return "normal", None
+    return rule.sight_checks, str(ref)
+
+
 def automatic_success(request: CheckRequest, feature: Feature, profile: RulesProfile) -> CheckResult:
     table, dc_ref = profile.get("check.difficulty", dict[str, int])
     return CheckResult(ability=request.ability, difficulty=request.difficulty, target=table[request.difficulty],
@@ -141,5 +153,5 @@ def automatic_success(request: CheckRequest, feature: Feature, profile: RulesPro
                        rule_refs=(str(dc_ref),))
 
 
-__all__ = ["CheckRequest", "CheckResult", "NaturalResults", "automatic_success", "combine_modes",
+__all__ = ["CheckRequest", "CheckResult", "NaturalResults", "automatic_success", "combine_modes", "darkness_effect",
            "resolve_check", "task_tags", "trained_auto_success"]

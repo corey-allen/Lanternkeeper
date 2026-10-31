@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import func, select, text
@@ -18,9 +19,25 @@ from sqlalchemy.orm import Session
 
 from lk_rules import Ability, RulesProfile
 from lk_rules.character import ability_modifier
-from lk_rules.checks import CheckRequest, CheckResult, automatic_success, resolve_check, trained_auto_success
+from lk_rules.checks import (
+    CheckRequest,
+    CheckResult,
+    automatic_success,
+    darkness_effect,
+    resolve_check,
+    trained_auto_success,
+)
 from lk_rules.clock import ActiveLight as RulesLight
-from lk_rules.clock import ClockState, advance, light_source
+from lk_rules.clock import (
+    ClockState,
+    TimeKind,
+    advance,
+    credit_seconds,
+    light_source,
+    seconds_until_deadline,
+    split_pending,
+    time_cost,
+)
 from lk_rules.combat import Combatant, CombatantStatus, Encounter, EncounterStatus, next_turn, resolve_attack, start_encounter
 from lk_rules.dice import RollRecord, Roller
 from lk_rules import gear
@@ -228,6 +245,54 @@ def advance_game_time(ctx: ToolContext, minutes: int, reason: str) -> None:
             ctx.event("CONDITION_ENDED", f"{c.condition_key} ended", {"condition": c.condition_key})
 
 
+def spend_time(ctx: ToolContext, kind: TimeKind, action: str, reason: str, *, rounds: int = 1) -> None:
+    """Charge an action's time according to the campaign's timing mode (ADR-0013)."""
+    mode, _ = st.timing_of(ctx.campaign, ctx.profile)
+    minutes, refs = time_cost(ctx.profile, mode, kind, action, rounds=rounds)
+    ctx.rule_refs.extend(str(r) for r in refs)
+    if minutes:
+        advance_game_time(ctx, minutes, reason)
+
+
+def _clock_state(ctx: ToolContext, wc: WorldClock) -> ClockState:
+    rows = ctx.session.scalars(select(ActiveLight).where(ActiveLight.campaign_id == ctx.campaign.id))
+    return ClockState(minutes_elapsed=wc.minutes_elapsed, lights=tuple(
+        RulesLight(light_id=str(r.id), item_key=r.item_key, remaining_minutes=r.remaining_minutes) for r in rows))
+
+
+def credit_real_time(ctx: ToolContext, now: datetime, *, pause: bool) -> None:
+    """Credit active play seconds up to ``now`` as pending time. Pausing stops the clock until the next
+    heartbeat, so time spent waiting for the model is never charged."""
+    wc = ctx.session.get(WorldClock, ctx.campaign.id, with_for_update=True)
+    if wc is None:
+        return
+    mode, _ = st.timing_of(ctx.campaign, ctx.profile)
+    if mode != "real_time":
+        wc.realtime_last_tick_at, wc.realtime_pending_seconds = None, 0
+        return
+    wc.realtime_pending_seconds += credit_seconds(wc.realtime_last_tick_at, now, ctx.campaign.idle_pause_seconds)
+    wc.realtime_last_tick_at = None if pause else now
+    ctx.session.flush()
+
+
+def flush_real_time(ctx: ToolContext, *, only_at_deadline: bool) -> bool:
+    """Fold whole pending minutes into game time. With ``only_at_deadline``, only once a light or a
+    condition would expire (heartbeats), so the log gets an event only when time changes something."""
+    wc = ctx.session.get(WorldClock, ctx.campaign.id, with_for_update=True)
+    if wc is None or wc.realtime_pending_seconds < 60:
+        return False
+    if only_at_deadline:
+        expiries = [c.expires_at_minute for c in ctx.session.scalars(select(CharacterCondition).where(
+            CharacterCondition.character_id == ctx.character.id)) if c.expires_at_minute is not None]
+        deadline = seconds_until_deadline(_clock_state(ctx, wc), expiries)
+        if deadline is None or wc.realtime_pending_seconds < deadline:
+            return False
+    minutes, carry = split_pending(wc.realtime_pending_seconds)
+    wc.realtime_pending_seconds = carry
+    advance_game_time(ctx, minutes, "real time")
+    return True
+
+
 def reveal_entity(ctx: ToolContext, entity: AdventureEntity, how: str) -> bool:
     """Record a discovery (reveal_clue). Follows REVEALS edges. Returns False if already known."""
     if ctx.session.get(CampaignDiscovery, (ctx.campaign.id, entity.id)):
@@ -304,14 +369,12 @@ def move_to_location(ctx: ToolContext, target_id: str) -> None:
     legal = {x["location_id"]: x for x in st.exits(ctx.session, ctx.campaign, discovered)}
     if target_id not in legal:
         raise ToolRejected("NO_SUCH_EXIT", "There is no known way from here to that place.")
-    minutes, ref = ctx.profile.action_minutes("move")
-    ctx.rule_refs.append(str(ref))
-    advance_game_time(ctx, minutes, "travel")
+    spend_time(ctx, "crawl", "move", "travel")
     enter_location(ctx, uuid.UUID(target_id))
 
 
 def request_ability_check(ctx: ToolContext, ability: str, difficulty: str, purpose: str, *,
-                          task_tag: str | None = None) -> CheckResult:
+                          task_tag: str | None = None, needs_sight: bool = False) -> CheckResult:
     """Resolve a check with the character's modifiers. Trained tasks succeed without a roll when there
     is no time pressure (ADR-0009 #3); combat counts as pressure."""
     require_can_act(ctx)
@@ -319,7 +382,13 @@ def request_ability_check(ctx: ToolContext, ability: str, difficulty: str, purpo
         ab = Ability(ability.upper())
     except ValueError as exc:
         raise ToolRejected("INVALID_ABILITY", f"Unknown ability {ability!r}") from exc
-    request = CheckRequest(ability=ab, difficulty=difficulty, purpose=purpose, task_tag=task_tag)
+    dark_mode, dark_ref = darkness_effect(ctx.profile, is_lit=st.is_lit(ctx.session, ctx.campaign),
+                                          needs_sight=needs_sight)
+    if dark_ref:
+        ctx.rule_refs.append(dark_ref)
+    request = CheckRequest(ability=ab, difficulty=difficulty, purpose=purpose, task_tag=task_tag, mode=dark_mode,
+                           conditions=("total_darkness",) if dark_ref else (),
+                           rule_refs=(dark_ref,) if dark_ref else ())
     under_pressure = st.active_encounter(ctx.session, ctx.campaign) is not None
     trained = trained_auto_success(st.character_features(ctx.session, ctx.character), task_tag,
                                    under_pressure=under_pressure)
@@ -346,7 +415,8 @@ def request_ability_check(ctx: ToolContext, ability: str, difficulty: str, purpo
                     "applied": [a.model_dump() for a in result.applied], "purpose": purpose,
                     "roll_id": result.roll.roll_id}, witnessed=True)
     ctx.record_roll(result.roll, ev)
-    extras = f" [{', '.join(a.label for a in result.applied)}]" if result.applied else ""
+    labels = [a.label for a in result.applied] + (["total darkness"] if dark_ref else [])
+    extras = f" [{', '.join(labels)}]" if labels else ""
     ctx.outcome.append(f"{ab.value} check ({difficulty}{task}, target {result.target}): rolled {result.roll.total}"
                        f"{natural}{extras} - {word}.")
     return result
@@ -355,16 +425,15 @@ def request_ability_check(ctx: ToolContext, ability: str, difficulty: str, purpo
 def search_location(ctx: ToolContext) -> None:
     require_can_act(ctx)
     require_not_in_combat(ctx)
-    minutes, ref = ctx.profile.action_minutes("search")
-    ctx.rule_refs.append(str(ref))
-    advance_game_time(ctx, minutes, "searching")
+    spend_time(ctx, "time_passes", "search", "searching")
     ls = ctx.session.get(CampaignLocationState, (ctx.campaign.id, ctx.campaign.current_location_id))
     if ls:
         ls.searched = True
     found = False
     for e, clue in _clues_at(ctx, RevealTrigger.ON_SEARCH):
         if clue.check_ability and clue.check_difficulty:
-            if not request_ability_check(ctx, clue.check_ability, clue.check_difficulty, f"search: {e.name}").success:
+            if not request_ability_check(ctx, clue.check_ability, clue.check_difficulty, f"search: {e.name}",
+                                         needs_sight=True).success:
                 continue
         found = reveal_entity(ctx, e, "found by searching") or found
     if not found:
@@ -378,9 +447,7 @@ def record_npc_interaction(ctx: ToolContext, npc_entity_id: str, topic: str) -> 
     if npc_entity_id not in present:
         raise ToolRejected("NPC_NOT_PRESENT", "That person is not here.")
     inst, npc = present[npc_entity_id]
-    minutes, ref = ctx.profile.action_minutes("talk")
-    ctx.rule_refs.append(str(ref))
-    advance_game_time(ctx, minutes, "conversation")
+    spend_time(ctx, "crawl", "talk", "conversation")
     ev = ctx.event("NPC_INTERACTION", f"{ctx.character.name} spoke with {npc.name}",
                    {"npc_entity_id": npc_entity_id, "topic": topic[:300]})
     # The addressed NPC learns what was said; bystanders learn only that a conversation happened.
@@ -412,25 +479,43 @@ def use_item(ctx: ToolContext, item_key: str) -> None:
     if item_def is None or item_def.light is None:
         raise ToolRejected("UNSUPPORTED_MECHANIC",
                            f"Using {row.name} has no effect defined by the active rules profile.")
-    inv = remove_item(st.inventory_model(rows), item_key, 1)
-    left = inv.quantity_of(item_key)
+    _, policy = st.timing_of(ctx.campaign, ctx.profile)
+    wc = ctx.session.get(WorldClock, ctx.campaign.id, with_for_update=True)
+    assert wc is not None
+    result = light_source(_clock_state(ctx, wc), item_key=item_key, light_id="new", profile=ctx.profile,
+                          policy=policy)
+    used = next((r for r in rows if r.item_key == result.consumes), None)
+    if used is None:
+        fuel_def, _ = ctx.profile.item(result.consumes)
+        raise ToolRejected("NO_FUEL", f"You need {fuel_def.name if fuel_def else result.consumes} to light the "
+                                      f"{row.name.lower()}.")
+    inv = remove_item(st.inventory_model(rows), result.consumes, 1)
+    left = inv.quantity_of(result.consumes)
+    used_name = used.name
     if left:
-        row.quantity = left
+        used.quantity = left
     else:
-        ctx.session.delete(row)
-    clock_state = light_source(ClockState(), item_key=item_key, light_id="new", profile=ctx.profile)
+        ctx.session.delete(used)
+    for old in result.extinguished:
+        light_row = ctx.session.get(ActiveLight, uuid.UUID(old.light_id))
+        if light_row is not None:
+            ctx.session.delete(light_row)
+            ctx.event("LIGHT_EXTINGUISHED", f"Put out the {old.item_key} to start a fresh light",
+                      {"item_key": old.item_key, "remaining_minutes": old.remaining_minutes})
     light = ActiveLight(campaign_id=ctx.campaign.id, item_key=item_key, lit_at_minute=ctx.minute(),
-                        remaining_minutes=clock_state.lights[0].remaining_minutes)
+                        remaining_minutes=result.lit.remaining_minutes)
     ctx.session.add(light)
     ctx.session.flush()
+    rides = policy == "ride_along" and result.lit.remaining_minutes < item_def.light.duration_minutes
     ctx.event("ITEM_USED", f"Lit a {row.name} ({light.remaining_minutes} minutes of light)",
-              {"item_key": item_key, "consumed": 1, "remaining_quantity": left,
-               "light_minutes": light.remaining_minutes}, witnessed=True)
-    ctx.outcome.append(f"You light a {row.name.lower()}; it will burn for {light.remaining_minutes} game minutes. "
-                       f"{left} left.")
-    minutes, ref = ctx.profile.action_minutes("use_item")
-    ctx.rule_refs.append(str(ref))
-    advance_game_time(ctx, minutes, "using an item")
+              {"item_key": item_key, "consumed_item": result.consumes, "consumed": 1, "remaining_quantity": left,
+               "light_minutes": light.remaining_minutes, "policy": policy}, witnessed=True)
+    timer = "it shares the current light's timer" if rides else "it will burn"
+    ctx.outcome.append(f"You light a {row.name.lower()}; {timer} for {light.remaining_minutes} minutes. "
+                       f"{used_name}: {left} left.")
+    if result.extinguished:
+        ctx.outcome.append("Your previous light is put out.")
+    spend_time(ctx, "crawl", "use_item", "using an item")
 
 
 # ---- combat ------------------------------------------------------------------
@@ -578,11 +663,9 @@ def resolve_attack_tool(ctx: ToolContext, target_id: str) -> None:
         model = next_turn(model)
     _sync(ctx, enc, model)
     rounds = max(1, model.round - rounds_before)
-    minutes, ref = ctx.profile.action_minutes("combat_round")
-    ctx.rule_refs.append(str(ref))
     if model.status != EncounterStatus.ACTIVE:
         _end_encounter(ctx, enc, model)
-    advance_game_time(ctx, minutes * rounds, "combat")
+    spend_time(ctx, "combat_round", "combat_round", "combat", rounds=rounds)
 
 
 def _end_encounter(ctx: ToolContext, enc: EncounterState, model: Encounter) -> None:
@@ -649,6 +732,9 @@ __all__ = [
     "ToolContext",
     "ToolRejected",
     "advance_game_time",
+    "credit_real_time",
+    "flush_real_time",
+    "spend_time",
     "clear_campaign_events_guard",
     "move_to_location",
     "record_npc_interaction",

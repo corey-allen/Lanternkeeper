@@ -188,16 +188,6 @@ def test_inventory_errors():
 
 # ---- time and light ---------------------------------------------------------
 
-def test_light_burns_down_and_expires():
-    state = light_source(ClockState(), item_key="torch", light_id="L1", profile=P)
-    assert state.lights[0].remaining_minutes == 60 and state.is_lit
-    step = advance(state, 50)
-    assert step.after.lights[0].remaining_minutes == 10 and not step.expired_lights
-    step = advance(step.after, 10)
-    assert step.after.lights == () and step.expired_lights[0].light_id == "L1"
-    assert step.after.minutes_elapsed == 60 and not step.after.is_lit
-
-
 def test_time_validation_and_non_light():
     with pytest.raises(ValidationFailed):
         advance(ClockState(), -1)

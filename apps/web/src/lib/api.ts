@@ -57,6 +57,15 @@ export type DiceRoll = {
 };
 export type GameEvent = { sequence: number; type: string; summary: string; game_minute: number; campaign_version: number };
 
+export type ClockView = {
+  minutes_elapsed: number; pending_seconds: number; running: boolean; is_lit: boolean;
+  timing: "real_time" | "rounds" | "action_minutes" | null; multiple_lights: string | null; idle_pause_seconds: number;
+  timing_options: string[]; multiple_light_options: string[];
+  lights: { item_key: string; remaining_minutes: number; remaining_seconds: number }[];
+};
+
+export type HeartbeatResponse = { campaign_version: number; changed: boolean; outcome: string[]; clock: ClockView };
+
 export type PlayerView = {
   campaign: { id: string; name: string; status: string; version: number; rules_profile: string; adventure_id: string | null };
   character: null | {
@@ -79,7 +88,7 @@ export type PlayerView = {
   enemies: { id: string; name: string; description: string }[];
   quests: { id: string; name: string; status: string; objective: string }[];
   discoveries: { id: string; type: string; name: string; text: string }[];
-  clock: { minutes_elapsed: number; lights: { item_key: string; remaining_minutes: number }[]; is_lit: boolean };
+  clock: ClockView;
   encounter: null | { round: number; participants: { name: string; side: string; status: string; hp?: number; max_hp?: number }[] };
   recent_events: GameEvent[];
   recent_dice: DiceRoll[];

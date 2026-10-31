@@ -37,7 +37,9 @@ No rule value in this repository is taken from Shadowdark. See `docs/licensing-r
 | `gear.shops` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
 | `inventory.manage` | `inventory` | yes | items, capacity | AVAILABLE | BLOCKED | add/remove/consume, errors |
 | `time.advance` | `clock` | yes | action minutes | AVAILABLE | BLOCKED | advance, bounds |
-| `light.duration` | `clock` | yes | items (light duration) | AVAILABLE | BLOCKED | burn-down, expiry |
+| `light.duration` | `clock` | yes | items (light duration) | AVAILABLE | BLOCKED | burn-down, expiry, fuel, ride-along/restart |
+| `light.real_time` | `clock` | yes | light timing | BLOCKED (not in dev rules) | BLOCKED | heartbeat credit, idle pause, deadline flush, rounds mode, settings (ADR-0013) |
+| `vision.darkness` | `checks` | yes | total darkness | BLOCKED (not in dev rules) | BLOCKED | disadvantage on sight checks when unlit |
 | `combat.initiative` | `combat` | yes | initiative ability | AVAILABLE | BLOCKED | ordering, tie-break |
 | `combat.attack` | `combat` | yes | attack rule, zero-HP rule | AVAILABLE | BLOCKED | hit/miss, damage, victory/defeat, turn order |
 | `conditions.track` | `progression` | yes (tracking only) | condition catalog | AVAILABLE | BLOCKED | apply/expire, unknown |
@@ -55,7 +57,7 @@ No rule value in this repository is taken from Shadowdark. See `docs/licensing-r
 | `encounter.random` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
 | `treasure.generate` | — | **no** | — | UNSUPPORTED | UNSUPPORTED | — |
 
-**Applied in play:** checks use character modifiers, task categories, natural results and trained-task automatic success (D2). Combat does not use character modifiers yet (D5); total-darkness effects come with light (D4).
+**Applied in play:** checks use character modifiers, task categories, natural results and trained-task automatic success (D2). Combat does not use character modifiers yet (D5). Light and time (D4): real-time or rounds timing, multiple-light options, fuel, and total darkness on sight-based checks; darkness on attacks (D5) and encounter checks (D6) are not applied yet.
 
 ## Dev house-rule values (not Shadowdark)
 

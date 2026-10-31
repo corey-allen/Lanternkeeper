@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .abilities import Ability
 from .modifiers import Feature, ModMode, ModTarget
@@ -221,6 +221,37 @@ class LightDef(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     duration_minutes: int = Field(ge=1)
     radius: Literal["close", "near", "double_near"] | None = None
+    fuel_item_key: str | None = None  # lighting consumes one of these instead of the item itself
+
+
+TimingMode = Literal["real_time", "rounds"]
+MultipleLights = Literal["ride_along", "restart"]
+
+
+class LightTimingRule(BaseModel):
+    """How light (and the play clock) is timed. The first listed mode and option are the defaults."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    modes: list[TimingMode] = Field(min_length=1)
+    rounds_per_hour: int = Field(ge=1, le=60)
+    multiple_sources: list[MultipleLights] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _whole_minutes(self) -> LightTimingRule:
+        if 60 % self.rounds_per_hour:
+            raise ValueError("rounds_per_hour must divide 60 so a round is a whole number of minutes")
+        return self
+
+    @property
+    def minutes_per_round(self) -> int:
+        return 60 // self.rounds_per_hour
+
+
+class DarknessRule(BaseModel):
+    """Effect of total darkness on a creature that is not darkness-adapted."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    sight_checks: Literal["disadvantage"]
 
 
 class KitItem(BaseModel):
